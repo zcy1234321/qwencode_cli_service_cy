@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>权限审批 · Intent Preview 重设计 — qwen serve 控制台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F4F4F1;
+    --surface: #FFFFFF;
+    --surface-sunken: #FAFAF8;
+    --ink: #1B1B18;
+    --ink-2: #4C4C46;
+    --muted: #83837B;
+    --line: #E7E5DF;
+    --line-strong: #D8D5CD;
+    /* AI 元素统一用紫色标记（Eleken Privado 惯例：一眼可辨、一键可撤） */
+    --ai: #6E56CF;
+    --ai-deep: #5440B8;
+    --ai-soft: #F0EDFB;
+    --ai-line: #DCD4F5;
+    --answer: #EDF3FC;
+    --ok: #1F8A57;
+    --ok-soft: #E6F4EC;
+    --danger: #C43D4B;
+    --danger-soft: #FBECEE;
+    --warn: #A2670A;
+    --warn-soft: #FBF3E2;
+    --radius: 14px;
+    --shadow-card: 0 1px 2px rgba(27,27,24,.05), 0 4px 16px rgba(27,27,24,.06);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Sora", -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.6;
+    display: grid;
+    grid-template-columns: 232px 296px 1fr;
+    overflow: hidden;
+  }
+  button { font: inherit; cursor: pointer; border: none; background: none; }
+  code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+  /* ============ 左导航 ============ */
+  .nav {
+    border-right: 1px solid var(--line);
+    padding: 18px 12px;
+    display: flex; flex-direction: column; gap: 2px;
+    background: var(--surface-sunken);
+  }
+  .nav .brand {
+    display: flex; align-items: center; gap: 9px;
+    padding: 4px 10px 16px;
+  }
+  .brand .logo {
+    width: 26px; height: 26px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--ai), #9B85F0);
+    display: grid; place-items: center; color: #fff;
+    font-weight: 700; font-size: 13px;
+  }
+  .brand b { font-size: 14px; letter-spacing: .01em; }
+  .nav a {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 10px; border-radius: 9px;
+    color: var(--ink-2); text-decoration: none; font-size: 13.5px;
+  }
+  .nav a:hover { background: #F0EFEA; }
+  .nav a.active { background: var(--ai-soft); color: var(--ai-deep); font-weight: 600; }
+  .nav .sep { margin: 12px 10px 6px; font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+  .nav .spacer { flex: 1; }
+  .daemon-pill {
+    margin: 8px 4px 0; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 11px;
+    background: var(--surface); font-size: 12px; color: var(--ink-2);
+  }
+  .daemon-pill .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-right: 6px; }
+
+  /* ============ 会话列表 ============ */
+  .list { border-right: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; }
+  .list header {
+    padding: 16px 16px 10px; display: flex; align-items: baseline; gap: 8px;
+  }
+  .list header h2 { font-size: 16px; font-weight: 700; }
+  .list header span { color: var(--muted); font-size: 12px; }
+  .conv {
+    display: flex; gap: 10px; padding: 12px 16px; cursor: pointer;
+    border-left: 3px solid transparent; align-items: flex-start;
+  }
+  .conv:hover { background: var(--surface-sunken); }
+  .conv.active { background: var(--surface-sunken); border-left-color: var(--ai); }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 600;
+  }
+  .conv .c-body { min-width: 0; flex: 1; }
+  .conv .c-top { display: flex; justify-content: space-between; align-items: baseline; }
+  .conv .c-name { font-weight: 600; font-size: 13.5px; }
+  .conv .c-time { color: var(--muted); font-size: 11px; }
+  .conv .c-preview {
+    color: var(--muted); font-size: 12.5px; margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .badge-pending {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: 5px; padding: 2px 8px; border-radius: 99px;
+    background: var(--ai-soft); color: var(--ai-deep);
+    font-size: 11px; font-weight: 600;
+  }
+  .badge-pending::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ai); animation: pulse 1.4s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  /* ============ 聊天主列 ============ */
+  .chat { display: flex; flex-direction: column; min-width: 0; }
+  .chat > header {
+    height: 56px; flex-shrink: 0; padding: 0 22px;
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .chat header h1 { font-size: 15px; font-weight: 700; }
+  .mode-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 99px; font-size: 11.5px; font-weight: 600;
+    background: var(--warn-soft); color: var(--warn);
+    border: 1px solid #EDDCB8;
+  }
+  .chat header .grow { flex: 1; }
+  .icon-btn {
+    width: 30px; height: 30px; border-radius: 8px; color: var(--ink-2);
+    display: grid; place-items: center;
+  }
+  .icon-btn:hover { background: var(--surface-sunken); }
+  .close-btn {
+    background: var(--ink); color: #fff; border-radius: 9px;
+    padding: 5px 13px; font-size: 12.5px; font-weight: 600;
+  }
+
+  .messages {
+    flex: 1; overflow-y: auto; padding: 26px 34px 20px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+
+  /* 用户消息 */
+  .msg-user { display: flex; gap: 10px; margin-bottom: 14px; }
+  .msg-user .bubble {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 4px 14px 14px 14px; padding: 10px 14px;
+    max-width: 560px; box-shadow: var(--shadow-card);
+  }
+  .msg-user .meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* 活动轨迹（explainable rationale：为什么、做了什么，一句话、贴着动作） */
+  .trail {
+    align-self: flex-end; text-align: right;
+    font-size: 12px; color: var(--muted);
+    padding: 3px 0; max-width: 70%;
+  }
+  .trail .who { color: var(--ai-deep); font-weight: 600; }
+  .trail .detail { color: var(--muted); }
+  .trail .src {
+    display: block; color: var(--ink-2); font-size: 12px;
+  }
+  .trail kbd {
+    font-family: inherit; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 5px; padding: 0 5px; font-size: 11px;
+  }
+
+  /* Agent 回答卡 */
+  .answer {
+    align-self: flex-start; max-width: 620px;
+    background: var(--answer); border-radius: 4px 16px 16px 16px;
+    padding: 14px 18px; margin: 10px 0 14px;
+  }
+  .answer .a-tag {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 700; color: var(--ai-deep); margin-bottom: 6px;
+  }
+  .answer ol { padding-left: 18px; } .answer li { margin: 2px 0; }
+
+  /* ============ Intent Preview 审批卡 ============ */
+  .intent {
+    align-self: stretch; max-width: 660px; margin: 12px 0 16px;
+    background: var(--surface);
+    border: 1.5px solid var(--ai-line);
+    border-radius: var(--radius);
+    box-shadow: 0 2px 4px rgba(110,86,207,.06), 0 12px 32px rgba(110,86,207,.10);
+    overflow: hidden;
+    animation: rise .35s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.99); } }
+
+  .intent-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 18px;
+    background: linear-gradient(180deg, var(--ai-soft), #F7F5FE);
+    border-bottom: 1px solid var(--ai-line);
+  }
+  .intent-head .bolt {
+    width: 28px; height: 28px; border-radius: 9px; flex-shrink: 0;
+    background: var(--ai); color: #fff; display: grid; place-items: center;
+  }
+  .intent-head .t1 { font-weight: 700; font-size: 14px; }
+  .intent-head .t1 .tool { color: var(--ai-deep); }
+  .intent-head .t2 { font-size: 11.5px; color: var(--muted); }
+  .intent-head .grow { flex: 1; }
+  .risk-chip {
+    font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 99px;
+  }
+  .risk-chip.high { background: var(--danger-soft); color: var(--danger); }
+  .risk-chip.mid { background: var(--warn-soft); color: var(--warn); }
+
+  .intent-body { padding: 16px 18px 6px; }
+  .plan-label {
+    font-size: 11px; font-weight: 700; letter-spacing: .09em;
+    color: var(--muted); margin-bottom: 8px;
+  }
+  .plan-summary { font-size: 14px; color: var(--ink); margin-bottom: 12px; }
+  .plan-summary b { color: var(--ai-deep); }
+
+  .kv {
+    background: var(--surface-sunken); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;
+    font-size: 13px;
+  }
+  .kv .row { display: flex; gap: 12px; padding: 3px 0; }
+  .kv .k { color: var(--muted); width: 86px; flex-shrink: 0; font-size: 12px; padding-top: 1px; }
+  .kv .v { min-width: 0; word-break: break-all; }
+  .kv pre {
+    background: #23211F; color: #E8E6E1; border-radius: 8px;
+    padding: 10px 12px; font-size: 12.5px; line-height: 1.55;
+    overflow-x: auto; margin-top: 2px;
+  }
+  .kv pre .cm { color: #8F8B82; }
+
+  .rationale {
+    display: flex; gap: 8px; align-items: flex-start;
+    font-size: 12.5px; color: var(--ink-2);
+    padding: 8px 12px; margin-bottom: 12px;
+    background: var(--ai-soft); border-radius: 9px;
+  }
+  .rationale .q { color: var(--ai-deep); font-weight: 700; flex-shrink: 0; }
+
+  .scope-line {
+    font-size: 11.5px; color: var(--muted); margin-bottom: 4px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .scope-line .lock { color: var(--ok); }
+
+  /* 三选一：Proceed / Edit / Cancel —— Eleken 的核心细节 */
+  .intent-actions {
+    display: flex; gap: 10px; align-items: center;
+    padding: 12px 18px 14px;
+  }
+  .btn-proceed {
+    background: var(--ink); color: #fff; font-weight: 600;
+    padding: 9px 18px; border-radius: 10px; font-size: 13.5px;
+  }
+  .btn-proceed:hover { background: #000; }
+  .btn-edit {
+    background: var(--surface); border: 1px solid var(--line-strong);
+    color: var(--ink); font-weight: 600;
+    padding: 9px 16px; border-radius: 10px; font-size: 13.5px;
+  }
+  .btn-edit:hover { border-color: var(--ai); color: var(--ai-deep); }
+  .btn-reject {
+    color: var(--danger); font-weight: 600; padding: 9px 12px;
+    border-radius: 10px; font-size: 13.5px;
+  }
+  .btn-reject:hover { background: var(--danger-soft); }
+  .always-link {
+    margin-left: auto; font-size: 12px; color: var(--muted);
+    text-decoration: underline dotted; text-underline-offset: 3px;
+  }
+  .always-link:hover { color: var(--ai-deep); }
+
+  /* 编辑态：修改后执行 */
+  .intent-edit { display: none; padding: 0 18px 14px; }
+  .intent.editing .intent-edit { display: block; }
+  .intent.editing .intent-actions { display: none; }
+  .intent-edit textarea {
+    width: 100%; min-height: 90px; resize: vertical;
+    font-family: "JetBrains Mono", monospace; font-size: 12.5px; line-height: 1.55;
+    background: var(--surface-sunken); border: 1.5px solid var(--ai-line);
+    border-radius: 10px; padding: 10px 12px; color: var(--ink);
+  }
+  .intent-edit textarea:focus { outline: none; border-color: var(--ai); }
+  .intent-edit .edit-row { display: flex; gap: 10px; margin-top: 10px; align-items: center; }
+  .intent-edit .hint { font-size: 11.5px; color: var(--muted); }
+
+  /* 已定局态：审批卡塌缩成一条轨迹记录 */
+  .intent.resolved { animation: none; border-color: var(--line); box-shadow: none; }
+  .resolved-strip {
+    display: flex; align-items: center; gap: 10px; padding: 12px 18px;
+    font-size: 13px; color: var(--ink-2);
+  }
+  .resolved-strip .stamp {
+    width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+    color: #fff; font-size: 12px; flex-shrink: 0;
+  }
+  .stamp.ok { background: var(--ok); } .stamp.no { background: var(--danger); }
+  .resolved-strip .when { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+
+  /* ============ 底部输入 ============ */
+  .composer { padding: 14px 34px 22px; }
+  .composer .box {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; box-shadow: var(--shadow-card);
+    padding: 12px 16px;
+  }
+  .composer .mode {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 8px; padding: 2px 9px;
+    margin-bottom: 8px;
+  }
+  .composer input {
+    width: 100%; border: none; outline: none; font: inherit;
+    color: var(--ink); background: transparent;
+  }
+  .composer input::placeholder { color: var(--muted); }
+  .composer .row { display: flex; align-items: center; margin-top: 10px; gap: 4px; }
+  .composer .row .grow { flex: 1; }
+  .send {
+    background: var(--ink); color: #fff; border-radius: 9px;
+    padding: 6px 16px; font-weight: 600; font-size: 13px;
+  }
+  .blocking-note {
+    text-align: center; font-size: 11.5px; color: var(--muted); margin-top: 8px;
+  }
+  .blocking-note .who { color: var(--ai-deep); font-weight: 600; }
+
+  @media (max-width: 1100px) { body { grid-template-columns: 200px 1fr; } .list { display: none; } }
+</style>
+</head>
+<body>
+
+<!-- ================= 左导航 ================= -->
+<nav class="nav">
+  <div class="brand"><span class="logo">q</span><b>qwen serve 控制台</b></div>
+  <a href="#" class="active">▤&nbsp; 会话</a>
+  <a href="#">◈&nbsp; 模型</a>
+  <a href="#">⌘&nbsp; MCP</a>
+  <a href="#">✦&nbsp; Skills</a>
+  <a href="#">⚒&nbsp; 工具</a>
+  <div class="sep">网关</div>
+  <a href="#">⬡&nbsp; 应用接入</a>
+  <a href="#">≣&nbsp; 审计日志</a>
+  <div class="spacer"></div>
+  <div class="daemon-pill">
+    <span class="dot"></span>daemon 已连接
+    <div style="color:var(--muted);margin-top:2px" class="mono">127.0.0.1:4170</div>
+  </div>
+</nav>
+
+<!-- ================= 会话列表 ================= -->
+<aside class="list">
+  <header><h2>会话</h2><span>3 个进行中</span></header>
+
+  <div class="conv active">
+    <div class="avatar" style="background:#6E56CF">文</div>
+    <div class="c-body">
+      <div class="c-top"><span class="c-name">整理周报文档</span><span class="c-time">刚刚</span></div>
+      <div class="c-preview">我需要把汇总写入 reports 目录…</div>
+      <span class="badge-pending">等待你的审批</span>
+    </div>
+  </div>
+
+  <div class="conv">
+    <div class="avatar" style="background:#4C8DDA">数</div>
+    <div class="c-body">
+      <div class="c-top"><span class="c-name">数据库慢查询排查</span><span class="c-time">12 分钟前</span></div>
+      <div class="c-preview">已定位到 3 条全表扫描 SQL</div>
+    </div>
+  </div>
+
+  <div class="conv">
+    <div class="avatar" style="background:#1F8A57">爬</div>
+    <div class="c-body">
+      <div class="c-top"><span class="c-name">竞品页面抓取</span><span class="c-time">1 小时前</span></div>
+      <div class="c-preview">本轮结束（stopReason: end_turn）</div>
+    </div>
+  </div>
+</aside>
+
+<!-- ================= 聊天主列 ================= -->
+<main class="chat">
+  <header>
+    <h1>整理周报文档</h1>
+    <span class="mode-chip">⚠ default · 逐次审批中</span>
+    <div class="grow"></div>
+    <button class="icon-btn" title="收藏">☆</button>
+    <button class="icon-btn" title="更多">⋯</button>
+    <button class="close-btn">结束会话</button>
+  </header>
+
+  <div class="messages" id="messages">
+
+    <!-- 用户消息 -->
+    <div class="msg-user">
+      <div class="avatar" style="background:#4C8DDA;width:30px;height:30px">我</div>
+      <div>
+        <div class="bubble">把这周的实验数据汇总一下，存成 markdown 放到 reports 目录。</div>
+        <div class="meta">14:02</div>
+      </div>
+    </div>
+
+    <!-- 活动轨迹：每步动作 + 一句话理由（explainable rationale） -->
+    <div class="trail">
+      <span class="who">agent</span> 读取了 <kbd>data/week42.csv</kbd> · 14:02
+      <span class="src">—— 汇总前需要原始数据</span>
+    </div>
+    <div class="trail">
+      <span class="who">agent</span> 列出了 <kbd>reports/</kbd> 目录 · 14:03
+      <span class="src">—— 确认目标目录存在且不与已有文件冲突</span>
+    </div>
+
+    <!-- Agent 文本答复 -->
+    <div class="answer">
+      <div class="a-tag">✦ agent</div>
+      数据已读完：42 条实验记录，3 组对照。我准备生成一份汇总文件
+      <code class="mono">reports/week42-summary.md</code>，内容包含均值表和结论段落。
+      写入前需要你确认。
+    </div>
+
+    <!-- ======== Intent Preview 审批卡（待决） ======== -->
+    <section class="intent" id="intent-1">
+      <div class="intent-head">
+        <span class="bolt">⚡</span>
+        <div>
+          <div class="t1">计划执行 <span class="tool">Write</span>，等你确认</div>
+          <div class="t2">权限请求 #req_8f3a · 工具调用期间会话已暂停</div>
+        </div>
+        <div class="grow"></div>
+        <span class="risk-chip mid">可逆 · 覆盖风险</span>
+      </div>
+
+      <div class="intent-body">
+        <div class="plan-label">它打算做什么</div>
+        <div class="plan-summary">
+          新建文件 <b>reports/week42-summary.md</b>，写入约 1.2 KB 的 Markdown 汇总。
+        </div>
+
+        <div class="kv">
+          <div class="row"><span class="k">file_path</span><span class="v mono">D:\cyzhenga\AI_project\reports\week42-summary.md</span></div>
+          <div class="row"><span class="k">content</span>
+            <span class="v" style="flex:1">
+              <pre><span class="cm"># 第 42 周实验汇总</span>
+
+| 组别 | 样本 | 均值 | 结论 |
+|---|---|---|---|
+| A | 14 | 0.872 | 显著优于基线 |
+| B | 14 | 0.831 | 与基线持平 |
+…</pre>
+            </span>
+          </div>
+        </div>
+
+        <div class="rationale">
+          <span class="q">为什么？</span>
+          <span>你要求"存成 markdown 放到 reports 目录"；该目录下没有同名文件，不会覆盖任何内容。</span>
+        </div>
+
+        <div class="scope-line">
+          <span class="lock">🔒</span>
+          路径在本会话工作区内 · 符合网关白名单 <span class="mono">allowed_paths</span>
+        </div>
+      </div>
+
+      <!-- 三选一：Proceed / Edit / Cancel -->
+      <div class="intent-actions">
+        <button class="btn-proceed" onclick="resolve('intent-1','ok','已允许 · Write 执行成功')">允许执行</button>
+        <button class="btn-edit" onclick="startEdit('intent-1')">修改后执行</button>
+        <button class="btn-reject" onclick="resolve('intent-1','no','已拒绝 · agent 将改用其它方式')">拒绝</button>
+        <a class="always-link" href="#" onclick="resolve('intent-1','ok','已允许 · 本会话不再询问 Write');return false;">本会话总是允许 Write</a>
+      </div>
+
+      <!-- 编辑态 -->
+      <div class="intent-edit">
+        <div class="plan-label" style="margin-bottom:6px">修改写入内容（agent 将按你的版本执行）</div>
+        <textarea id="edit-1"># 第 42 周实验汇总
+
+| 组别 | 样本 | 均值 | 结论 |
+|---|---|---|---|
+| A | 14 | 0.872 | 显著优于基线 |
+| B | 14 | 0.831 | 与基线持平 |</textarea>
+        <div class="edit-row">
+          <button class="btn-proceed" onclick="resolve('intent-1','ok','已按你修改的版本执行')">以修改后的内容执行</button>
+          <button class="btn-edit" onclick="cancelEdit('intent-1')">放弃修改</button>
+          <span class="hint">只有内容被改动，路径与工具不变</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== 第二个待审批示例：Shell（高风险） ======== -->
+    <section class="intent" id="intent-2">
+      <div class="intent-head">
+        <span class="bolt">⚡</span>
+        <div>
+          <div class="t1">计划执行 <span class="tool">Shell</span>，等你确认</div>
+          <div class="t2">权限请求 #req_8f3b · 命令类操作请格外留意</div>
+        </div>
+        <div class="grow"></div>
+        <span class="risk-chip high">高风险 · 不可逆</span>
+      </div>
+
+      <div class="intent-body">
+        <div class="plan-label">它打算做什么</div>
+        <div class="plan-summary">运行一条 shell 命令：删除临时目录并重算缓存。</div>
+        <div class="kv">
+          <div class="row"><span class="k">command</span>
+            <span class="v" style="flex:1"><pre>rm -rf ./tmp/cache && python scripts/rebuild_index.py</pre></span>
+          </div>
+        </div>
+        <div class="rationale">
+          <span class="q">为什么？</span>
+          <span>缓存索引与最新数据不一致；agent 判断重建比增量修补更可靠。</span>
+        </div>
+        <div class="scope-line">
+          <span style="color:var(--danger)">⚠</span>
+          shell 命令内的路径无法被网关白名单解析——此请求未经 <span class="mono">allowed_paths</span> 校验，请人工核对命令
+        </div>
+      </div>
+
+      <div class="intent-actions">
+        <button class="btn-proceed" onclick="resolve('intent-2','ok','已允许 · Shell 执行成功')">允许执行</button>
+        <button class="btn-edit" onclick="startEdit('intent-2')">修改后执行</button>
+        <button class="btn-reject" onclick="resolve('intent-2','no','已拒绝 · 已告知 agent 不要删除缓存')">拒绝</button>
+      </div>
+
+      <div class="intent-edit">
+        <div class="plan-label" style="margin-bottom:6px">修改命令（agent 将按你的版本执行）</div>
+        <textarea>rm -rf ./tmp/cache && python scripts/rebuild_index.py</textarea>
+        <div class="edit-row">
+          <button class="btn-proceed" onclick="resolve('intent-2','ok','已按你修改的命令执行')">以修改后的命令执行</button>
+          <button class="btn-edit" onclick="cancelEdit('intent-2')">放弃修改</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 已定局的审批（塌缩成轨迹条目，可审计） -->
+    <section class="intent resolved">
+      <div class="resolved-strip">
+        <span class="stamp ok">✓</span>
+        <span><b>Read</b> · 读取 data/week42.csv —— 已由网关按白名单自动允许</span>
+        <span class="when">14:02 · 投票方：gateway(bot-a)</span>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- 底部输入 -->
+  <div class="composer">
+    <div class="box">
+      <span class="mode">⌁ 回复</span>
+      <input placeholder="给 agent 补充指令，或先处理上面的审批…  (⌘K 快捷键)">
+      <div class="row">
+        <button class="icon-btn" title="附件">📎</button>
+        <button class="icon-btn" title="引用上下文">▣</button>
+        <div class="grow"></div>
+        <button class="send">发送</button>
+      </div>
+    </div>
+    <div class="blocking-note">有 <span class="who">2 条权限请求</span>待处理 · agent 已暂停，批准或拒绝后继续</div>
+  </div>
+</main>
+
+<script>
+  // 审批卡交互：三选一定局 + 编辑态
+  function startEdit(id) {
+    document.getElementById(id).classList.add('editing');
+  }
+  function cancelEdit(id) {
+    document.getElementById(id).classList.remove('editing');
+  }
+  function resolve(id, kind, note) {
+    const card = document.getElementById(id);
+    const ok = kind === 'ok';
+    card.classList.remove('editing');
+    card.classList.add('resolved');
+    card.innerHTML =
+      '<div class="resolved-strip">' +
+        '<span class="stamp ' + (ok ? 'ok' : 'no') + '">' + (ok ? '✓' : '✕') + '</span>' +
+        '<span>' + note + '</span>' +
+        '<span class="when">刚刚 · 投票方：你（Web UI）</span>' +
+      '</div>';
+    // 追加一条轨迹，模拟 agent 继续工作
+    const trail = document.createElement('div');
+    trail.className = 'trail';
+    trail.innerHTML = '<span class="who">agent</span> 继续执行中… · 刚刚';
+    card.after(trail);
+    updateBlockingNote();
+  }
+  function updateBlockingNote() {
+    const left = document.querySelectorAll('.intent:not(.resolved)').length;
+    const el = document.querySelector('.blocking-note');
+    el.innerHTML = left
+      ? '有 <span class="who">' + left + ' 条权限请求</span>待处理 · agent 已暂停，批准或拒绝后继续'
+      : '全部权限请求已处理 · agent 正在继续工作';
+  }
+</script>
+</body>
+</html>

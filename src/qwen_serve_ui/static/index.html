@@ -1,0 +1,2901 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>qwen serve 管理界面</title>
+<style>
+  :root {
+    --bg: #F4F4F1;
+    --bg-panel: #FAFAF8;
+    --bg-card: #FFFFFF;
+    --border: #E7E5DF;
+    --line-strong: #D8D5CD;
+    --text: #1B1B18;
+    --text-dim: #83837B;
+    --text-2: #4C4C46;
+    /* AI 元素统一用紫色标记：一眼可辨 */
+    --accent: #6E56CF;
+    --accent-hover: #5440B8;
+    --ai: #6E56CF;
+    --ai-deep: #5440B8;
+    --ai-soft: #F0EDFB;
+    --ai-line: #DCD4F5;
+    --answer: #EDF3FC;
+    --ok: #1F8A57;
+    --ok-soft: #E6F4EC;
+    --danger: #C43D4B;
+    --danger-soft: #FBECEE;
+    --warn: #A2670A;
+    --warn-soft: #FBF3E2;
+    --thought: #83837B;
+    --radius: 14px;
+    --shadow-card: 0 1px 2px rgba(27,27,24,.05), 0 4px 16px rgba(27,27,24,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; overflow: hidden;
+    font-size: 14px; line-height: 1.6;
+  }
+  code, pre, .mono { font-family: "JetBrains Mono", Consolas, ui-monospace, monospace; }
+  .dim { color: var(--text-dim); }
+  a { color: var(--ai-deep); }
+  #app { display: flex; height: 100vh; }
+
+  /* ---- 左侧导航 ---- */
+  #sidebar {
+    width: 220px; min-width: 220px; background: var(--bg-panel);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+    padding: 18px 12px; gap: 2px;
+  }
+  #sidebar .logo {
+    display: flex; align-items: center; gap: 9px;
+    padding: 4px 10px 16px; font-size: 14px; font-weight: 700; color: var(--text);
+    letter-spacing: .01em;
+  }
+  #sidebar .logo::before {
+    content: 'q'; width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--ai), #9B85F0);
+    display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px;
+  }
+  .nav-btn {
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+    padding: 7px 10px; background: none; border: none; color: var(--text-2);
+    font-size: 13.5px; cursor: pointer; border-radius: 9px; font-weight: 400;
+  }
+  .nav-btn:hover { color: var(--text); background: #F0EFEA; }
+  .nav-btn.active {
+    color: var(--ai-deep); background: var(--ai-soft); font-weight: 600;
+  }
+  .nav-btn .ic { width: 16px; text-align: center; flex-shrink: 0; font-size: 13px; }
+  .nav-sep {
+    margin: 12px 10px 6px; font-size: 11px; color: var(--text-dim); letter-spacing: .08em;
+  }
+  #daemon-info {
+    margin-top: auto; padding: 10px 12px; font-size: 12px; color: var(--text-2);
+    border: 1px solid var(--border); border-radius: 11px; background: var(--bg-card);
+    word-break: break-all;
+  }
+  #daemon-info::before {
+    content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ok); margin-right: 6px; vertical-align: 1px;
+  }
+
+  /* ---- 主区 ---- */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #topbar {
+    height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 22px;
+    border-bottom: 1px solid var(--border); background: var(--bg-card); flex-shrink: 0;
+  }
+  #topbar .title { font-size: 15px; font-weight: 700; margin: 0; }
+  #topbar select, .form-row select, .form-row input {
+    background: var(--bg-card); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; font-size: 13px; outline: none;
+  }
+  #topbar select:focus, .form-row input:focus, .form-row select:focus { border-color: var(--ai); }
+  #topbar .mode-chip-select {
+    background: var(--warn-soft); color: var(--warn); border: 1px solid #EDDCB8;
+    border-radius: 99px; font-size: 11.5px; font-weight: 600; padding: 3px 10px;
+  }
+  #topbar .close-btn {
+    background: var(--text); color: #fff; border-radius: 9px;
+    padding: 5px 13px; font-size: 12.5px; font-weight: 600;
+  }
+  #topbar .close-btn:hover { background: #000; }
+
+  .page { flex: 1; overflow-y: auto; padding: 20px; display: none; }
+  .page.active { display: block; }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px;
+    box-shadow: var(--shadow-card);
+  }
+  .card h3 { font-size: 14px; margin-bottom: 12px; color: var(--text); font-weight: 700; }
+  .card .hint, .hint { font-size: 12px; color: var(--text-dim); margin-top: 8px; }
+
+  button {
+    background: var(--text); color: #fff; border: none; border-radius: 10px;
+    padding: 8px 16px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { background: #000; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.btn-danger { background: var(--danger); }
+  button.btn-danger:hover { background: #a8323e; }
+  button.btn-ghost {
+    background: var(--bg-card); border: 1px solid var(--line-strong); color: var(--text);
+  }
+  button.btn-ghost:hover { border-color: var(--ai); color: var(--ai-deep); background: var(--bg-card); }
+  button.btn-sm { padding: 4px 12px; font-size: 12.5px; border-radius: 8px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-weight: 500; }
+  tr:hover td { background: var(--bg-panel); }
+  td .dim { color: var(--text-dim); }
+
+  .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .form-row label { font-size: 13px; color: var(--text-dim); }
+  .form-row input, .form-row select { min-width: 160px; }
+
+  .spinner {
+    display: inline-block; width: 14px; height: 14px; vertical-align: -2px;
+    border: 2px solid var(--border); border-top-color: var(--ai);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- toast ---- */
+  #toasts { position: fixed; top: 16px; right: 16px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    padding: 10px 16px; border-radius: 10px; font-size: 13px; max-width: 380px;
+    box-shadow: var(--shadow-card); animation: slidein 0.2s ease;
+    background: var(--bg-card); border: 1px solid var(--border); color: var(--text);
+  }
+  .toast.ok { border-color: var(--ok); }
+  .toast.err { border-color: var(--danger); }
+  .toast.warn { border-color: var(--warn); }
+  @keyframes slidein { from { opacity: 0; transform: translateX(20px); } }
+
+  /* ---- 聊天页 ---- */
+  #page-chat { display: none; padding: 0; overflow: hidden; }
+  #page-chat.active { display: flex; }
+  #chat-sidebar {
+    width: 280px; min-width: 280px; background: var(--bg-card);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  }
+  #chat-sidebar .head {
+    padding: 16px 16px 10px; display: flex; justify-content: space-between; align-items: baseline;
+  }
+  #chat-sidebar .head span { font-size: 16px; font-weight: 700; }
+  #session-list { flex: 1; overflow-y: auto; }
+  .session-item {
+    display: flex; gap: 10px; padding: 12px 16px; cursor: pointer;
+    border-left: 3px solid transparent; align-items: flex-start;
+  }
+  .session-item:hover { background: var(--bg-panel); }
+  .session-item.active { background: var(--bg-panel); border-left-color: var(--ai); }
+  .session-item .avatar {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 600;
+  }
+  .session-item .c-body { min-width: 0; flex: 1; }
+  .session-item .c-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .session-item .name { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .session-item .c-time { color: var(--text-dim); font-size: 11px; flex-shrink: 0; }
+  .session-item .c-preview {
+    color: var(--text-dim); font-size: 12.5px; margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .session-item .badge-pending {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: 5px; padding: 2px 8px; border-radius: 99px;
+    background: var(--ai-soft); color: var(--ai-deep);
+    font-size: 11px; font-weight: 600;
+  }
+  .session-item .badge-pending::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ai); animation: pulse 1.4s infinite;
+  }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .session-item .del { color: var(--text-dim); background: none; border: none; cursor: pointer; font-size: 14px; padding: 0 4px; font-weight: 400; flex-shrink: 0; }
+  .session-item .del:hover { color: var(--danger); background: none; }
+  #chat-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #messages {
+    flex: 1; overflow-y: auto; padding: 26px 34px 20px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .msg { margin-bottom: 14px; max-width: 78%; }
+  /* 用户消息：左侧头像 + 白卡气泡 + 时间（Intercom 访客消息位） */
+  .msg.user { display: flex; gap: 10px; align-self: flex-start; }
+  .msg.user .u-avatar {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    background: #4C8DDA; color: #fff; font-size: 12px; font-weight: 600;
+    display: grid; place-items: center;
+  }
+  .msg.user .u-main { min-width: 0; }
+  .msg.user .meta { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .bubble {
+    padding: 10px 14px; border-radius: 14px; font-size: 14px;
+    line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+  }
+  .msg.user .bubble {
+    background: var(--bg-card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 4px 14px 14px 14px; box-shadow: var(--shadow-card);
+    max-width: 560px;
+  }
+  .msg.assistant { align-self: flex-start; }
+  .msg.assistant .bubble {
+    background: var(--answer); border: none; color: var(--text);
+    border-radius: 4px 16px 16px 16px; padding: 14px 18px; max-width: 620px;
+  }
+  .msg.assistant .bubble::before {
+    content: '✦ agent'; display: block; font-size: 12px; font-weight: 700;
+    color: var(--ai-deep); margin-bottom: 6px;
+  }
+  .msg.assistant .bubble:empty::before { margin-bottom: 0; }
+
+  /* 思考块：可折叠，不占回答位置 */
+  details.thought { margin: 4px 0 8px; font-size: 12px; }
+  details.thought summary {
+    cursor: pointer; color: var(--text-dim); user-select: none; list-style: none;
+  }
+  details.thought summary::-webkit-details-marker { display: none; }
+  details.thought summary::before { content: '▸ '; color: var(--ai); }
+  details.thought[open] summary::before { content: '▾ '; }
+  details.thought .thought-body {
+    color: var(--thought); white-space: pre-wrap; margin: 4px 0 2px 14px;
+  }
+
+  /* 工具调用轨迹 */
+  .tool-call {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 6px 10px; margin: 6px 0; font-size: 12px;
+  }
+  .tool-call summary { cursor: pointer; color: var(--text-dim); }
+  .tool-call summary .tstatus { margin-left: 8px; }
+  .tool-call pre {
+    margin-top: 6px; white-space: pre-wrap; word-break: break-all;
+    background: #23211F; color: #E8E6E1; border-radius: 8px; padding: 10px 12px;
+    max-height: 200px; overflow-y: auto; font-size: 12.5px; line-height: 1.55;
+  }
+  .tstatus.running { color: var(--warn); }
+  .tstatus.completed, .tstatus.ok { color: var(--ok); }
+  .tstatus.failed, .tstatus.error { color: var(--danger); }
+  .banner {
+    padding: 10px 14px; border-radius: 10px; font-size: 13px; margin: 8px 0;
+    max-width: 78%; border: 1px solid var(--border); background: var(--bg-card);
+  }
+  .banner.error { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+  .banner.warn { background: var(--warn-soft); border-color: #EDDCB8; color: var(--warn); }
+  .banner .opts { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ---- intent preview 权限审批卡 ---- */
+  .banner.perm { background: transparent; border: none; padding: 0; }
+  .perm-card {
+    background: var(--bg-card);
+    border: 1.5px solid var(--ai-line); border-radius: var(--radius);
+    box-shadow: 0 2px 4px rgba(110,86,207,.06), 0 12px 32px rgba(110,86,207,.10);
+    padding: 0 0 14px; font-size: 13px; overflow: hidden;
+    animation: rise .35s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.99); } }
+  .perm-head {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 13px 18px; margin-bottom: 10px;
+    background: linear-gradient(180deg, var(--ai-soft), #F7F5FE);
+    border-bottom: 1px solid var(--ai-line);
+  }
+  .perm-head::before {
+    content: '⚡'; width: 28px; height: 28px; border-radius: 9px; flex-shrink: 0;
+    background: var(--ai); color: #fff; display: grid; place-items: center; font-size: 14px;
+  }
+  .perm-head .tt { min-width: 0; }
+  .perm-head .ttl { font-weight: 700; font-size: 14px; }
+  .perm-head .ttl b { color: var(--ai-deep); }
+  .perm-head .sub { font-size: 11.5px; color: var(--text-dim); }
+  .perm-head .grow { flex: 1; }
+  .plan-label {
+    font-size: 11px; font-weight: 700; letter-spacing: .09em;
+    color: var(--text-dim); margin: 0 18px 6px;
+  }
+  .perm-rationale .q { color: var(--ai-deep); font-weight: 700; flex-shrink: 0; }
+  .chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 99px; }
+  .chip.low { background: var(--ok-soft); color: var(--ok); }
+  .chip.mid { background: var(--warn-soft); color: var(--warn); }
+  .chip.high { background: var(--danger-soft); color: var(--danger); }
+  .perm-intent { margin: 0 18px 4px; font-size: 14px; }
+  .perm-intent b { color: var(--ai-deep); }
+  .perm-rationale {
+    display: flex; gap: 8px; align-items: flex-start;
+    font-size: 12.5px; color: var(--text-2);
+    padding: 8px 12px; margin: 6px 18px 10px;
+    background: var(--ai-soft); border-radius: 9px;
+  }
+  .perm-kv {
+    background: var(--bg-panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; margin: 6px 18px 10px; font-size: 13px;
+  }
+  .perm-kv .row { display: flex; gap: 12px; padding: 3px 0; }
+  .perm-kv .k { color: var(--text-dim); width: 86px; min-width: 86px; flex-shrink: 0; font-size: 12px; padding-top: 1px; }
+  .perm-kv .v { min-width: 0; word-break: break-all; }
+  .perm-kv pre {
+    white-space: pre-wrap; word-break: break-all; max-height: 160px; overflow-y: auto;
+    background: #23211F; color: #E8E6E1; border-radius: 8px;
+    padding: 10px 12px; margin: 4px 0 2px;
+    font-size: 12.5px; line-height: 1.55;
+    font-family: "JetBrains Mono", Consolas, ui-monospace, monospace;
+  }
+  .perm-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 0 18px; }
+  .perm-actions .btn-allow, .perm-edit .btn-allow-edit { background: var(--text); }
+  .perm-actions .btn-allow:hover, .perm-edit .btn-allow-edit:hover { background: #000; }
+  .perm-actions .btn-reject { background: none; border: none; color: var(--danger); }
+  .perm-actions .btn-reject:hover { background: var(--danger-soft); color: var(--danger); }
+  .perm-edit { margin: 10px 18px 0; display: none; }
+  .perm-edit.open { display: block; }
+  .perm-edit textarea {
+    width: 100%; min-height: 90px; background: var(--bg-panel); color: var(--text);
+    border: 1.5px solid var(--ai-line); border-radius: 10px; padding: 10px 12px;
+    font-size: 12.5px; line-height: 1.55; resize: vertical; outline: none;
+    font-family: "JetBrains Mono", Consolas, ui-monospace, monospace;
+  }
+  .perm-edit textarea:focus { border-color: var(--ai); }
+  .perm-edit .row { display: flex; gap: 10px; margin-top: 10px; align-items: center; }
+
+  /* 定局后的塌缩条：一行摘要，点击展开只读详情 */
+  .resolved-strip {
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px 18px; font-size: 13px; color: var(--text-2); user-select: none;
+  }
+  .resolved-strip:hover { border-color: var(--line-strong); }
+  .resolved-strip .rs-icon {
+    width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center;
+    color: #fff; font-size: 12px; flex-shrink: 0;
+  }
+  .resolved-strip .rs-icon.ok { background: var(--ok); }
+  .resolved-strip .rs-icon.no { background: var(--danger); }
+  .resolved-strip .rs-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .resolved-strip .rs-time { font-size: 11.5px; color: var(--text-dim); flex-shrink: 0; }
+  .resolved-strip .rs-toggle { color: var(--ai-deep); flex-shrink: 0; font-size: 12px; }
+  .resolved-detail { margin-top: 6px; }
+  .resolved-detail .perm-card { opacity: 0.9; animation: none; box-shadow: none; border-color: var(--border); }
+  .resolved-detail .perm-actions, .resolved-detail .perm-edit { display: none; }
+
+  /* 底部输入（composer）：工作区/工具选择整合在输入框里 */
+  #chat-input-bar {
+    border-top: none; padding: 14px 34px 18px;
+    display: flex; flex-direction: column; gap: 8px; background: transparent;
+  }
+  .composer-box {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow-card); padding: 12px 16px;
+  }
+  .composer-row { display: flex; align-items: center; margin-top: 10px; gap: 8px; }
+  .composer-row .grow { flex: 1; }
+  #chat-input {
+    width: 100%; background: transparent; color: var(--text);
+    border: none; padding: 0; font-size: 14px; resize: none; outline: none;
+    font-family: inherit; height: 44px;
+  }
+  #chat-input::placeholder { color: var(--text-dim); }
+  #btn-send { border-radius: 9px; padding: 6px 16px; }
+  .blocking-note { text-align: center; font-size: 11.5px; color: var(--text-dim); }
+  .blocking-note .who { color: var(--ai-deep); font-weight: 600; }
+  .empty-tip { color: var(--text-dim); text-align: center; margin-top: 40px; font-size: 14px; }
+
+  .kv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .kv-item { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .kv-item .k { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+  .kv-item .v { font-size: 16px; font-weight: 600; word-break: break-all; }
+
+  /* 工作区选择器（composer 内） */
+  #ws-picker { position: relative; }
+  #ws-pill { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 3px 10px; font-size: 12px; cursor: pointer; color: var(--text-2); font-weight: 600;
+    max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #ws-pill:hover { border-color: var(--ai); background: var(--bg-card); }
+  #ws-panel { position: absolute; z-index: 50; left: 0; bottom: calc(100% + 6px); width: 300px;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow-card); padding: 8px; }
+  #ws-panel .ws-option { padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #ws-panel .ws-option:hover { background: var(--bg-panel); }
+  #ws-panel .ws-option.active { color: var(--ai-deep); }
+  #ws-panel .ws-sep { border-top: 1px solid var(--border); margin: 6px 0 4px;
+    padding-top: 6px; font-size: 11px; color: var(--text-dim); }
+  #ws-panel .ws-pathbar { display: flex; gap: 4px; margin-bottom: 4px; }
+  #ws-panel .ws-pathbar input { flex: 1; font-size: 12px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px; }
+  #ws-dirs { max-height: 180px; overflow-y: auto; margin-bottom: 6px; }
+  #ws-dirs .ws-dir { padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #ws-dirs .ws-dir:hover { background: var(--bg-panel); }
+
+  /* 新会话工具选择器（composer 内） */
+  #tools-picker { position: relative; }
+  #tools-pill { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 3px 10px; font-size: 12px; cursor: pointer; color: var(--text-2); font-weight: 600; }
+  #tools-pill:hover { border-color: var(--ai); background: var(--bg-card); }
+  #tools-panel { position: absolute; z-index: 50; left: 0; bottom: calc(100% + 6px); width: 300px;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow-card); padding: 10px; }
+  #tools-checks { max-height: 240px; overflow-y: auto; margin: 8px 0; }
+  #tools-checks label { display: block; padding: 3px 6px; font-size: 12px; cursor: pointer;
+    border-radius: 4px; }
+  #tools-checks label:hover { background: var(--bg-panel); }
+</style>
+</head>
+<body>
+<div id="app">
+  <nav id="sidebar">
+    <div class="logo">qwen serve 控制台</div>
+    <button class="nav-btn active" data-page="chat"><span class="ic">▤</span>会话</button>
+    <button class="nav-btn" data-page="models"><span class="ic">◈</span>模型</button>
+    <button class="nav-btn" data-page="mcp"><span class="ic">⌘</span>MCP</button>
+    <button class="nav-btn" data-page="skills"><span class="ic">✦</span>Skills</button>
+    <button class="nav-btn" data-page="status"><span class="ic">⚒</span>工具</button>
+    <div class="nav-sep">网关</div>
+    <button class="nav-btn" data-page="apps"><span class="ic">⬡</span>应用接入</button>
+    <div id="daemon-info">daemon：<span id="daemon-url">连接中…</span></div>
+  </nav>
+
+  <div id="main">
+
+    <!-- ============ 聊天页 ============ -->
+    <section id="page-chat" class="page active">
+      <div id="chat-sidebar">
+        <div class="head">
+          <span>会话</span>
+          <button class="btn-sm" id="btn-new-session">＋ 新建</button>
+        </div>
+        <div id="session-list"></div>
+      </div>
+      <div id="chat-main">
+        <div id="chat-topbar">
+          <div id="topbar" style="display:flex;">
+            <h1 id="chat-title" class="title">聊天</h1>
+            <select id="sel-approval" class="mode-chip-select" title="权限模式（切换当前会话）">
+              <option value="default">⚠ default · 逐次审批</option>
+              <option value="auto-edit">auto-edit</option>
+              <option value="auto">auto · 自动执行</option>
+              <option value="yolo">yolo</option>
+            </select>
+            <select id="sel-model" title="新会话使用的模型"><option value="">默认模型</option></select>
+            <span id="chat-status" style="margin-left:auto;font-size:12px;color:var(--text-dim);"></span>
+            <button id="btn-close-session" class="close-btn" style="display:none;">结束会话</button>
+          </div>
+        </div>
+        <div id="messages"><div class="empty-tip">点击左侧「＋ 新建」开始一个新会话</div></div>
+        <div id="chat-input-bar">
+          <div class="composer-box">
+            <textarea id="chat-input" placeholder="给 agent 补充指令，Enter 发送，Shift+Enter 换行"></textarea>
+            <div class="composer-row">
+              <div id="ws-picker">
+                <button id="ws-pill" type="button" title="新会话的工作区（每个会话独立，按对话建立）">
+                  📁 <span id="ws-pill-name">默认工作区</span> <span class="dim">▾</span>
+                </button>
+                <div id="ws-panel" style="display:none;">
+                  <div class="ws-option" data-ws="">默认工作区（daemon）</div>
+                  <div id="ws-registered"></div>
+                  <div class="ws-sep">浏览文件夹</div>
+                  <div class="ws-pathbar">
+                    <button id="ws-up" class="btn-sm btn-ghost" type="button" title="上一级">↑</button>
+                    <input id="ws-path-input" placeholder="绝对路径，回车跳转">
+                  </div>
+                  <div id="ws-dirs"><span class="dim">…</span></div>
+                  <button id="ws-choose" class="btn-sm" type="button">选择当前目录</button>
+                </div>
+              </div>
+              <div id="tools-picker">
+                <button id="tools-pill" type="button" title="新会话的工具开关（每个会话独立，创建时生效）">
+                  🔧 <span id="tools-pill-name">默认工具</span> <span class="dim">▾</span>
+                </button>
+                <div id="tools-panel" style="display:none;">
+                  <div class="hint" style="margin-top:0;">勾选 = 新会话可用。默认跟随工作区全局设置；
+                    只影响之后新建的会话，已有会话不变。</div>
+                  <div id="tools-checks"><span class="dim">打开后加载…</span></div>
+                  <button id="tools-reset" class="btn-sm btn-ghost" type="button">恢复跟随全局</button>
+                </div>
+              </div>
+              <div class="grow"></div>
+              <button id="btn-stop" class="btn-danger" style="display:none;">停止</button>
+              <button id="btn-send">发送</button>
+            </div>
+          </div>
+          <div id="blocking-note" class="blocking-note" style="display:none;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 模型页 ============ -->
+    <section id="page-models" class="page">
+      <div class="card">
+        <h3>已配置模型 <button class="btn-sm btn-ghost" id="btn-models-refresh" style="float:right;">刷新</button></h3>
+        <div id="models-table"><span class="dim">加载中…</span></div>
+      </div>
+      <div class="card">
+        <h3>安装 provider（OpenAI 兼容）</h3>
+        <div class="form-row">
+          <select id="pv-preset">
+            <option value="">常用预设…（选了自动填 providerId 和 baseUrl）</option>
+            <option value="openai|openai|https://api.openai.com/v1">OpenAI</option>
+            <option value="deepseek|custom-openai-compatible|https://api.deepseek.com/v1">DeepSeek</option>
+            <option value="dashscope|custom-openai-compatible|https://dashscope.aliyuncs.com/compatible-mode/v1">通义千问（DashScope 兼容模式）</option>
+            <option value="moonshot|custom-openai-compatible|https://api.moonshot.cn/v1">Moonshot Kimi</option>
+            <option value="zhipu|custom-openai-compatible|https://open.bigmodel.cn/api/paas/v4">智谱 GLM</option>
+            <option value="ollama|custom-openai-compatible|http://127.0.0.1:11434/v1">Ollama（本地）</option>
+          </select>
+          <input id="pv-providerId" placeholder="providerId，如 openai / custom-openai-compatible">
+        </div>
+        <div class="form-row">
+          <input id="pv-baseUrl" placeholder="baseUrl，如 https://api.deepseek.com/v1">
+          <input id="pv-apiKey" placeholder="apiKey" type="password">
+          <button id="btn-fetch-models" class="btn-ghost" type="button">获取模型列表</button>
+        </div>
+        <div id="pv-fetched" style="display:none;margin:6px 0;">
+          <div class="hint" style="margin-bottom:4px;">
+            从 <code id="pv-fetched-via"></code> 拉到 <b id="pv-fetched-count"></b> 个模型，
+            勾选要安装的（<a href="javascript:void 0" id="pv-check-all">全选</a> /
+            <a href="javascript:void 0" id="pv-check-none">全不选</a>）：
+          </div>
+          <div id="pv-model-checks" style="max-height:180px;overflow:auto;border:1px solid #333;border-radius:6px;padding:6px;"></div>
+        </div>
+        <div class="form-row">
+          <input id="pv-protocol" placeholder="protocol（可选，默认 openai）">
+          <input id="pv-modelIds" placeholder="modelIds（可选，逗号分隔；上方勾选后自动填）">
+        </div>
+        <button id="btn-install-provider">安装</button>
+        <span class="hint">安装后新会话即可选用；也可以点下方「重载配置」让运行中的 daemon 立即生效。</span>
+      </div>
+      <div class="card">
+        <h3>配置热重载</h3>
+        <button id="btn-reload-workspace">重载配置（POST /workspace/reload）</button>
+      </div>
+    </section>
+
+    <!-- ============ MCP 页 ============ -->
+    <section id="page-mcp" class="page">
+      <div class="card">
+        <div id="mcp-notice" class="banner warn" style="display:none;margin-bottom:12px;"></div>
+        <h3>MCP servers <button class="btn-sm btn-ghost" id="btn-mcp-refresh" style="float:right;">刷新</button></h3>
+        <div id="mcp-table"><span class="dim">加载中…</span></div>
+      </div>
+      <div class="card">
+        <h3>添加 / 更新 MCP server</h3>
+        <div class="form-row">
+          <input id="mcp-name" placeholder="名称（JSON 批量导入时可留空）">
+          <select id="mcp-input-mode">
+            <option value="form">表单填写</option>
+            <option value="json">JSON 粘贴（可批量导入）</option>
+          </select>
+          <select id="mcp-type" class="mcp-form-only">
+            <option value="stdio">stdio</option>
+            <option value="http">http</option>
+            <option value="sse">sse</option>
+          </select>
+        </div>
+        <div id="mcp-form-mode">
+          <div class="form-row" id="mcp-stdio-fields">
+            <input id="mcp-command" placeholder="command，如 npx">
+            <input id="mcp-args" placeholder="args，空格分隔，如 -y @modelcontextprotocol/server-filesystem">
+            <input id="mcp-env" placeholder='env，JSON 可选，如 {"KEY":"val"}'>
+          </div>
+          <div class="form-row" id="mcp-http-fields" style="display:none;">
+            <input id="mcp-httpUrl" placeholder="httpUrl">
+            <input id="mcp-headers" placeholder='headers，JSON 可选'>
+          </div>
+          <div class="form-row" id="mcp-sse-fields" style="display:none;">
+            <input id="mcp-url" placeholder="url">
+            <input id="mcp-sse-headers" placeholder='headers，JSON 可选'>
+          </div>
+        </div>
+        <div id="mcp-json-mode" style="display:none;">
+          <textarea id="mcp-json" rows="8" style="width:100%;font-family:monospace;"
+            placeholder='支持两种格式：&#10;1) 完整配置（可含多个 server，批量导入，名称框留空）：&#10;{"mcpServers": {"filesystem": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]}}}&#10;2) 单个 server 的配置对象（名称取左侧名称框）：&#10;{"httpUrl": "http://127.0.0.1:9000/mcp", "headers": {"Authorization": "Bearer …"}}'></textarea>
+        </div>
+        <button id="btn-mcp-save">保存（scope=user）</button>
+        <button id="btn-mcp-reload" class="btn-ghost" style="margin-left:8px;">重载 MCP</button>
+      </div>
+    </section>
+
+    <!-- ============ Skills 页 ============ -->
+    <section id="page-skills" class="page">
+      <div class="card">
+        <h3>Skills <button class="btn-sm btn-ghost" id="btn-skills-refresh" style="float:right;">刷新</button></h3>
+        <div id="skills-table"><span class="dim">加载中…</span></div>
+      </div>
+      <div class="card">
+        <h3>从本地文件夹安装 skill</h3>
+        <div class="form-row">
+          <input id="sk-name" placeholder="名称">
+          <input id="sk-path" placeholder="文件夹路径（daemon 机器上的路径）">
+          <select id="sk-scope">
+            <option value="global">global</option>
+            <option value="workspace">workspace</option>
+          </select>
+          <button id="btn-skills-install">安装</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 工具与状态页 ============ -->
+    <section id="page-status" class="page">
+      <div class="card">
+        <h3>内置工具开关</h3>
+        <div id="tools-list"></div>
+        <div class="hint">注意：工具禁用只对新创建的会话生效，已存在的会话不受影响。</div>
+      </div>
+      <div class="card">
+        <h3>daemon 状态（GET /health?deep=1）</h3>
+        <div id="health-cards"><span class="dim">加载中…</span></div>
+      </div>
+      <div class="card">
+        <h3>能力（GET /capabilities）</h3>
+        <div id="cap-cards"><span class="dim">加载中…</span></div>
+        <button id="btn-status-refresh" class="btn-sm btn-ghost" style="margin-top:10px;">刷新</button>
+      </div>
+    </section>
+
+    <!-- ============ 应用接入页 ============ -->
+    <section id="page-apps" class="page">
+      <div class="card">
+        <h3>接入程序 <button class="btn-sm btn-ghost" id="btn-apps-refresh" style="float:right;">刷新</button></h3>
+        <div class="hint" style="margin-bottom:10px;">
+          每个程序持独立 token 接入网关：客户端 base_url 指向
+          <code>http://&lt;本机&gt;:&lt;端口&gt;/app/v1</code>，token 用下表生成的。
+          配置了工具/路径白名单的 app 会被强制 default 审批模式，由网关按配置自动投票。
+          <b>daemon 必须只绑 127.0.0.1</b>，否则程序可绕过网关直连。
+        </div>
+        <div id="apps-table"><span class="dim">加载中…</span></div>
+      </div>
+      <div class="card">
+        <h3 id="apps-form-title">新建接入程序</h3>
+        <input type="hidden" id="app-editing">
+        <div class="form-row">
+          <input id="app-name" placeholder="名称（唯一，如 report-bot）">
+          <input id="app-model" list="app-model-options" placeholder="模型 modelId（下拉选或手输，留空=daemon 默认）">
+          <datalist id="app-model-options"></datalist>
+        </div>
+        <div class="form-row">
+          <select id="app-approval">
+            <option value="auto">auto（全自动，无执行期拦截）</option>
+            <option value="default">default（逐次审批→网关按白名单自动投票）</option>
+            <option value="auto-edit">auto-edit</option>
+            <option value="yolo">yolo</option>
+          </select>
+          <input id="app-tools" placeholder='工具白名单，逗号分隔：* 或 Read,Write,mcp:server名；留空=不限'>
+        </div>
+        <div class="form-row">
+          <input id="app-paths" placeholder="文件路径白名单，逗号分隔绝对路径；留空=不限（shell 命令内的路径无法拦截）">
+        </div>
+        <div class="form-row">
+          <select id="app-daemon"><option value="">默认 daemon</option></select>
+          <input id="app-cwd" placeholder="工作区目录（可选，留空=daemon 默认工作区）" title="该程序的会话工作目录">
+          <input id="app-max-sessions" type="number" min="0" placeholder="并发会话上限（0=不限）" title="并发活跃会话上限">
+          <input id="app-rpm" type="number" min="0" placeholder="每分钟 prompt 上限（0=不限）" title="速率限制">
+        </div>
+        <div class="form-row">
+          <input id="app-note" placeholder="备注（可选）">
+          <button id="btn-app-save">保存</button>
+          <button id="btn-app-cancel" class="btn-ghost" style="display:none;">取消编辑</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>推理后端（daemon）<button class="btn-sm btn-ghost" id="btn-daemons-refresh" style="float:right;">刷新</button></h3>
+        <div class="hint" style="margin-bottom:10px;">
+          除默认 daemon（UI 服务启动时的 QWEN_SERVE_URL）外，可注册多台
+          <code>qwen serve</code>，每个接入程序绑定其中一台；请求按会话建在哪台就路由到哪台。
+        </div>
+        <div id="daemons-table"><span class="dim">加载中…</span></div>
+        <div class="form-row" style="margin-top:10px;">
+          <input id="daemon-name" placeholder="名称（唯一，如 gpu-2）">
+          <input id="daemon-url" placeholder="地址，如 http://127.0.0.1:4171">
+        </div>
+        <div class="form-row">
+          <input id="daemon-token" placeholder="daemon token（可选，只显示一次）">
+          <input id="daemon-note" placeholder="备注（可选）">
+          <button id="btn-daemon-add">添加</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>审计日志 <button class="btn-sm btn-ghost" id="btn-audit-refresh" style="float:right;">刷新</button></h3>
+        <div class="hint" style="margin-bottom:10px;">
+          落盘于 <code>ui-audit.jsonl</code>（QWEN_HOME 目录）：鉴权失败、会话建/关、
+          prompt（前 200 字符）、权限投票决策、配额拒绝、管理操作。
+        </div>
+        <div id="audit-list"><span class="dim">加载中…</span></div>
+      </div>
+    </section>
+  </div>
+</div>
+<div id="toasts"></div>
+
+<script>
+'use strict';
+
+/* ================= 通用工具 ================= */
+
+function toast(msg, type) {
+  type = type || 'ok';
+  const box = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(function () { el.remove(); }, type === 'err' ? 6000 : 3000);
+}
+
+async function api(path, opts) {
+  opts = opts || {};
+  const init = { method: opts.method || 'GET', headers: {} };
+  const adminToken = localStorage.getItem('qwen_ui_admin_token');
+  if (adminToken) init.headers['Authorization'] = 'Bearer ' + adminToken;
+  if (opts.body !== undefined) {
+    init.headers['Content-Type'] = 'application/json';
+    init.body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
+  }
+  let resp;
+  try {
+    resp = await fetch(path, init);
+  } catch (e) {
+    throw new Error('无法连接 UI 服务：' + e.message);
+  }
+  const text = await resp.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { /* 非 JSON body */ }
+  }
+  if (!resp.ok) {
+    // 服务端开了管理面鉴权：要一次 token 存进 localStorage 后重试
+    if (resp.status === 401 && data && data.code === 'admin_auth_required' && !opts._retried) {
+      const t = window.prompt('管理界面已启用鉴权，请输入管理员 token（QWEN_UI_ADMIN_TOKEN）：');
+      if (t) {
+        localStorage.setItem('qwen_ui_admin_token', t.trim());
+        return api(path, { ...opts, _retried: true });
+      }
+    }
+    const msg = (data && (data.error || data.message)) || (resp.status + ' ' + resp.statusText);
+    const err = new Error(msg);
+    err.status = resp.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+function asList(data, key) {
+  // 防御性处理：daemon 可能返回 list，也可能返回 {key: [...]} 包裹
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data[key])) return data[key];
+  return [];
+}
+
+/* ================= 导航 ================= */
+
+const PAGE_LOADERS = {
+  models: loadModelsPage,
+  mcp: loadMcpPage,
+  skills: loadSkillsPage,
+  status: loadStatusPage,
+  apps: loadAppsPageAll,
+};
+document.querySelectorAll('.nav-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('.nav-btn').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
+    const page = btn.dataset.page;
+    document.getElementById('page-' + page).classList.add('active');
+    const loader = PAGE_LOADERS[page];
+    if (loader) loader();
+  });
+});
+
+/* ================= 元信息 ================= */
+
+// daemon 版本能力标志（GET /api/meta 探测），驱动前端回退与提示。
+const DAEMON_CAPS = {
+  mcpPersistentConfig: true,   // 新版才有 /workspace/config/mcp/*（持久化+启停）
+  skillsConfigView: true,      // 新版才有 /workspace/config/skills
+  toolsList: true,             // 两个版本都有 GET /workspace/tools
+};
+
+api('/api/meta').then(function (m) {
+  document.getElementById('daemon-url').textContent = m.daemonUrl || '未知';
+  DAEMON_CAPS.mcpPersistentConfig = m.mcpPersistentConfig !== false;
+  DAEMON_CAPS.skillsConfigView = m.skillsConfigView !== false;
+  DAEMON_CAPS.toolsList = m.toolsList !== false;
+  updateMcpNotice();
+}).catch(function (e) {
+  document.getElementById('daemon-url').textContent = '不可用（' + e.message + '）';
+});
+
+/* ================= 聊天页 ================= */
+
+const LS_KEY = 'qwen_ui_sessions_v1';
+const chat = {
+  sessions: [],        // [{id, title, model, approvalMode}]，持久化到 localStorage
+  activeId: null,
+  // 内存态：sid -> { messages: [...], streaming: bool, stopped: bool,
+  //                 lastEventId, epoch, curAssistant, curThought, tools: {} }
+  live: {},
+};
+
+function loadSessions() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+    chat.sessions = Array.isArray(raw) ? raw : [];
+  } catch (e) { chat.sessions = []; }
+}
+
+function saveSessions() {
+  localStorage.setItem(LS_KEY, JSON.stringify(chat.sessions));
+}
+
+function liveOf(sid) {
+  if (!chat.live[sid]) {
+    chat.live[sid] = {
+      messages: [], streaming: false, stopped: false,
+      lastEventId: null, epoch: null, curAssistant: null, curThought: null, tools: {},
+      pendingPerms: new Set(),
+    };
+  }
+  return chat.live[sid];
+}
+
+const AVATAR_COLORS = ['#6E56CF', '#4C8DDA', '#1F8A57', '#C43D4B', '#A2670A', '#0E7C86'];
+
+function avatarColorOf(id) {
+  let h = 0;
+  const s = String(id || '');
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+function fmtTime(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function sessionPreview(sid, s) {
+  const st = chat.live[sid];
+  if (st) {
+    for (let i = st.messages.length - 1; i >= 0; i--) {
+      const m = st.messages[i];
+      if ((m.role === 'user' || m.role === 'assistant') && m.text) {
+        return m.text.trim().slice(0, 40);
+      }
+    }
+  }
+  return s.cwd ? ('📁 ' + s.cwd) : '';
+}
+
+function renderSessionList() {
+  const box = document.getElementById('session-list');
+  box.innerHTML = '';
+  chat.sessions.forEach(function (s) {
+    const st = chat.live[s.id];
+    const pending = st && st.pendingPerms && st.pendingPerms.size > 0;
+    const item = document.createElement('div');
+    item.className = 'session-item' + (s.id === chat.activeId ? ' active' : '');
+    item.innerHTML =
+      '<div class="avatar" style="background:' + avatarColorOf(s.id) + '">' + esc((s.title || '?').slice(0, 1)) + '</div>' +
+      '<div class="c-body">' +
+        '<div class="c-top"><span class="name">' + esc(s.title || s.id) + '</span>' +
+        '<span class="c-time">' + fmtTime(s.createdAt) + '</span></div>' +
+        '<div class="c-preview">' + esc(sessionPreview(s.id, s)) +
+          (s.tools ? ' 🔧' : '') + '</div>' +
+        (pending ? '<span class="badge-pending">等待你的审批</span>' : '') +
+      '</div>' +
+      '<button class="del" title="删除会话">✕</button>';
+    item.addEventListener('click', function () { selectSession(s.id); });
+    item.querySelector('.del').addEventListener('click', async function (ev) {
+      ev.stopPropagation();
+      deleteSession(s.id);
+    });
+    box.appendChild(item);
+  });
+}
+
+async function deleteSession(sid) {
+  const meta = chat.sessions.find(function (x) { return x.id === sid; });
+  if (!confirm('删除会话 ' + ((meta && meta.title) || sid) + '？')) return;
+  try {
+    await api('/api/sessions/' + encodeURIComponent(sid), { method: 'DELETE' });
+    toast('会话已删除');
+  } catch (e) {
+    toast('删除失败：' + e.message, 'err');
+    return;
+  }
+  chat.sessions = chat.sessions.filter(function (x) { return x.id !== sid; });
+  delete chat.live[sid];
+  saveSessions();
+  if (chat.activeId === sid) {
+    chat.activeId = chat.sessions.length ? chat.sessions[0].id : null;
+    if (chat.activeId) selectSession(chat.activeId); else renderMessages();
+  }
+  renderSessionList();
+  updateChatHeader();
+}
+
+/* 顶栏：会话标题 + 结束会话按钮 */
+function updateChatHeader() {
+  const meta = chat.sessions.find(function (s) { return s.id === chat.activeId; });
+  document.getElementById('chat-title').textContent = meta ? (meta.title || '聊天') : '聊天';
+  document.getElementById('btn-close-session').style.display = meta ? '' : 'none';
+}
+
+document.getElementById('btn-close-session').addEventListener('click', function () {
+  if (chat.activeId) deleteSession(chat.activeId);
+});
+
+/* composer 下方的待审批提示 */
+function updateBlockingNote(sid) {
+  if (sid !== chat.activeId) return;
+  const st = liveOf(sid);
+  const n = st.pendingPerms ? st.pendingPerms.size : 0;
+  const el = document.getElementById('blocking-note');
+  if (n > 0) {
+    el.style.display = '';
+    el.innerHTML = '有 <span class="who">' + n + ' 条权限请求</span>待处理 · agent 已暂停，批准或拒绝后继续';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+async function selectSession(sid) {
+  chat.activeId = sid;
+  renderSessionList();
+  const meta = chat.sessions.find(function (s) { return s.id === sid; });
+  if (meta) {
+    if (meta.model) document.getElementById('sel-model').value = meta.model;
+    if (meta.approvalMode) document.getElementById('sel-approval').value = meta.approvalMode;
+  }
+  // daemon 重启后 session 可能不存在：先 resume，失败则提示重建
+  const st = liveOf(sid);
+  if (!st.resumed) {
+    try {
+      await api('/api/sessions/' + encodeURIComponent(sid) + '/resume', { method: 'POST', body: {} });
+      st.resumed = true;
+      toast('会话已恢复');
+    } catch (e) {
+      toast('恢复会话失败（' + e.message + '），请新建会话', 'err');
+      if (confirm('恢复失败，是否从列表移除并新建会话？')) {
+        chat.sessions = chat.sessions.filter(function (x) { return x.id !== sid; });
+        saveSessions();
+        renderSessionList();
+        newSession();
+        return;
+      }
+    }
+  }
+  // 刷新后内存里的消息没了：从 daemon transcript / 本地缓存拉回历史重建
+  if (st.resumed && !st.historyLoaded && st.messages.length === 0) {
+    st.historyLoaded = true;
+    document.getElementById('chat-status').textContent = '正在恢复历史消息…';
+    try {
+      await restoreHistory(sid);
+    } catch (e) { /* 恢复失败不阻塞聊天 */ }
+    document.getElementById('chat-status').textContent = '';
+  }
+  renderMessages();
+}
+
+/* ---- 工作区选择器（每个会话独立，按对话建立）---- */
+
+let chatWorkspace = localStorage.getItem('chatWorkspace') || ''; // '' = daemon 默认
+let wsBrowseDir = '';   // 面板里正在浏览的目录
+let wsPanelOpen = false;
+
+function wsBasename(p) {
+  const parts = p.replace(/[\\/]+$/, '').split(/[\\/]/);
+  return parts[parts.length - 1] || p;
+}
+
+function wsUpdatePill() {
+  document.getElementById('ws-pill-name').textContent =
+    chatWorkspace ? wsBasename(chatWorkspace) : '默认工作区';
+  document.getElementById('ws-pill').title = chatWorkspace
+    ? '新会话工作区：' + chatWorkspace
+    : '新会话使用 daemon 默认工作区';
+  document.querySelectorAll('#ws-panel .ws-option').forEach(function (el) {
+    el.classList.toggle('active', (el.dataset.ws || '') === chatWorkspace);
+  });
+}
+
+function wsNormPath(p) {
+  return String(p).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+async function wsConflictCheck(path) {
+  /* 祖孙目录不能同时是工作区（daemon 规则，双向都算嵌套）。
+     已注册列表 = /api/workspaces 的 primary + entries。检查失败不阻塞。 */
+  try {
+    const data = await api('/api/workspaces');
+    const cwds = [];
+    if (data.primaryWorkspace) cwds.push(data.primaryWorkspace);
+    (data.entries || []).forEach(function (e) { if (e.cwd) cwds.push(e.cwd); });
+    const t = wsNormPath(path);
+    for (const raw of cwds) {
+      const c = wsNormPath(raw);
+      if (t === c) continue; // 相等 = 已注册工作区本身，允许
+      if (c.indexOf(t + '/') === 0 || t.indexOf(c + '/') === 0) {
+        return raw;
+      }
+    }
+  } catch (e) { /* 交给 daemon 报错兜底 */ }
+  return null;
+}
+
+async function wsSelect(path) {
+  if (path) {
+    const conflict = await wsConflictCheck(path);
+    if (conflict) {
+      toast('不能选这个目录：与已注册工作区互为祖孙目录（' + conflict + '）。' +
+        'daemon 不允许嵌套工作区，请换一个不相交的目录', 'err');
+      return false;
+    }
+  }
+  chatWorkspace = path || '';
+  localStorage.setItem('chatWorkspace', chatWorkspace);
+  wsUpdatePill();
+  wsTogglePanel(false);
+  return true;
+}
+
+async function wsBrowse(dir) {
+  const box = document.getElementById('ws-dirs');
+  box.innerHTML = '<span class="dim">加载中…</span>';
+  try {
+    const data = await api('/api/fs/suggest?path=' + encodeURIComponent(dir || ''));
+    wsBrowseDir = data.dir || dir || '';
+    document.getElementById('ws-path-input').value = wsBrowseDir;
+    const dirs = data.suggestions || [];
+    box.innerHTML = dirs.length
+      ? ''
+      : '<span class="dim">（没有子目录）</span>';
+    dirs.forEach(function (d) {
+      const el = document.createElement('div');
+      el.className = 'ws-dir';
+      el.textContent = '📁 ' + d.name;
+      el.title = d.path;
+      el.addEventListener('click', function () { wsBrowse(d.path); });
+      box.appendChild(el);
+    });
+  } catch (e) {
+    box.innerHTML = '<span class="dim">读取失败：' + esc(e.message) + '</span>';
+  }
+}
+
+async function wsLoadRegistered() {
+  const box = document.getElementById('ws-registered');
+  try {
+    const data = await api('/api/workspaces');
+    const entries = data.entries || [];
+    box.innerHTML = '';
+    entries.forEach(function (w) {
+      if (!w.cwd) return;
+      const el = document.createElement('div');
+      el.className = 'ws-option';
+      el.textContent = '📁 ' + (w.displayName || wsBasename(w.cwd));
+      el.title = w.cwd;
+      el.dataset.ws = w.cwd;
+      el.addEventListener('click', function () { wsSelect(w.cwd); });
+      box.appendChild(el);
+    });
+    wsUpdatePill();
+  } catch (e) { /* 列表拿不到就只保留默认项 */ }
+}
+
+function wsTogglePanel(open) {
+  wsPanelOpen = open === undefined ? !wsPanelOpen : open;
+  document.getElementById('ws-panel').style.display = wsPanelOpen ? '' : 'none';
+  if (wsPanelOpen) {
+    wsLoadRegistered();
+    wsBrowse(chatWorkspace || wsBrowseDir || '');
+  }
+}
+
+document.getElementById('ws-pill').addEventListener('click', function () {
+  wsTogglePanel();
+});
+document.querySelector('#ws-panel .ws-option[data-ws=""]').addEventListener('click', function () {
+  wsSelect('');
+});
+document.getElementById('ws-up').addEventListener('click', function () {
+  const cur = document.getElementById('ws-path-input').value.trim();
+  if (!cur) return;
+  const parent = cur.replace(/[\\/]+$/, '').replace(/[\\/][^\\/]+$/, '');
+  wsBrowse(parent && /[\\/]/.test(parent) ? parent : (cur.match(/^[A-Za-z]:/) ? cur.slice(0, 3) : '/'));
+});
+document.getElementById('ws-path-input').addEventListener('keydown', function (ev) {
+  if (ev.key === 'Enter') wsBrowse(this.value.trim());
+});
+document.getElementById('ws-choose').addEventListener('click', async function () {
+  const cur = document.getElementById('ws-path-input').value.trim();
+  if (!cur) { toast('先浏览或输入一个目录', 'warn'); return; }
+  if (await wsSelect(cur)) toast('新会话工作区：' + cur);
+});
+document.addEventListener('click', function (ev) {
+  // 注意：目录点击处理器会先清空列表（目标元素被摘下），
+  // 必须用在事件分发开始时定格的 composedPath 判断，而不是 contains(ev.target)
+  const inside = ev.composedPath().some(function (n) {
+    return n && (n.id === 'ws-picker' || n.id === 'tools-picker');
+  });
+  if (wsPanelOpen && !inside) {
+    wsTogglePanel(false);
+  }
+  if (toolsPanelOpen && !inside) {
+    toolsTogglePanel(false);
+  }
+});
+wsUpdatePill();
+
+/* ---- 新会话工具选择器（会话级工具覆盖） ----
+   daemon 没有会话级工具开关，但工具注册表只在会话创建时读一次 disabled 集；
+   服务端建会话时临时改工作区级开关、建完即恢复，效果等同按会话配置。 */
+
+let chatToolOverrides = null; // {disabled:[], enabled:[]} | null（null=跟随全局）
+try {
+  chatToolOverrides = JSON.parse(localStorage.getItem('chatToolOverrides') || 'null');
+} catch (e) { chatToolOverrides = null; }
+let toolsPanelOpen = false;
+let toolsGlobalDisabled = []; // 当前工作区全局禁用集（基线）
+
+function toolsUpdatePill() {
+  const el = document.getElementById('tools-pill-name');
+  if (!chatToolOverrides) {
+    el.textContent = '默认工具';
+    return;
+  }
+  const d = chatToolOverrides.disabled.length, e = chatToolOverrides.enabled.length;
+  el.textContent = '自定义（禁 ' + d + (e ? ' / 启 ' + e : '') + '）';
+}
+
+function toolsEffectiveDisabled(allNames) {
+  if (!chatToolOverrides) return toolsGlobalDisabled.slice();
+  const dis = new Set(toolsGlobalDisabled);
+  chatToolOverrides.enabled.forEach(function (n) { dis.delete(n); });
+  chatToolOverrides.disabled.forEach(function (n) { dis.add(n); });
+  return allNames.filter(function (n) { return dis.has(n); });
+}
+
+function renderToolsChecks(names) {
+  const box = document.getElementById('tools-checks');
+  const effDisabled = new Set(toolsEffectiveDisabled(names));
+  box.innerHTML = '';
+  names.forEach(function (n) {
+    const label = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !effDisabled.has(n);
+    cb.dataset.tool = n;
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(' ' + n +
+      (toolsGlobalDisabled.indexOf(n) >= 0 ? '（全局已禁用）' : '')));
+    box.appendChild(label);
+  });
+}
+
+async function toolsLoadState() {
+  const box = document.getElementById('tools-checks');
+  box.innerHTML = '<span class="dim">加载中…</span>';
+  try {
+    const cwd = chatWorkspace || '';
+    const state = await api('/api/tools/state' + (cwd ? '?cwd=' + encodeURIComponent(cwd) : ''));
+    toolsGlobalDisabled = state.disabled || [];
+    let names = [];
+    try {
+      const data = await api('/api/tools');
+      names = asList(data, 'tools').map(function (t) {
+        return typeof t === 'string' ? t : ((t && (t.name || (t.tool && t.tool.name))) || '');
+      }).filter(Boolean);
+    } catch (e) { /* 用硬编码名单 */ }
+    if (!names.length) names = BUILTIN_TOOLS;
+    // 全局禁用但不在名单里的也列出来（否则无法勾选启用）
+    toolsGlobalDisabled.forEach(function (n) {
+      if (names.indexOf(n) < 0) names.push(n);
+    });
+    (chatToolOverrides ? chatToolOverrides.disabled.concat(chatToolOverrides.enabled) : [])
+      .forEach(function (n) { if (names.indexOf(n) < 0) names.push(n); });
+    renderToolsChecks(names);
+  } catch (e) {
+    box.innerHTML = '<span class="dim">加载失败：' + esc(e.message) + '</span>';
+  }
+}
+
+function toolsTogglePanel(open) {
+  toolsPanelOpen = open === undefined ? !toolsPanelOpen : open;
+  document.getElementById('tools-panel').style.display = toolsPanelOpen ? '' : 'none';
+  if (toolsPanelOpen) toolsLoadState();
+}
+
+document.getElementById('tools-pill').addEventListener('click', function () {
+  toolsTogglePanel();
+});
+document.getElementById('tools-checks').addEventListener('change', function () {
+  const names = [];
+  document.querySelectorAll('#tools-checks input[type=checkbox]').forEach(function (cb) {
+    names.push(cb.dataset.tool);
+  });
+  const checked = {};
+  document.querySelectorAll('#tools-checks input[type=checkbox]:checked').forEach(function (cb) {
+    checked[cb.dataset.tool] = true;
+  });
+  const disabled = names.filter(function (n) {
+    return !checked[n] && toolsGlobalDisabled.indexOf(n) < 0;
+  });
+  const enabled = names.filter(function (n) {
+    return checked[n] && toolsGlobalDisabled.indexOf(n) >= 0;
+  });
+  chatToolOverrides = (disabled.length || enabled.length) ? { disabled: disabled, enabled: enabled } : null;
+  if (chatToolOverrides) {
+    localStorage.setItem('chatToolOverrides', JSON.stringify(chatToolOverrides));
+  } else {
+    localStorage.removeItem('chatToolOverrides');
+  }
+  toolsUpdatePill();
+});
+document.getElementById('tools-reset').addEventListener('click', function () {
+  chatToolOverrides = null;
+  localStorage.removeItem('chatToolOverrides');
+  toolsUpdatePill();
+  toolsLoadState();
+});
+toolsUpdatePill();
+
+async function createRemoteSession() {
+  const model = document.getElementById('sel-model').value;
+  const mode = document.getElementById('sel-approval').value;
+  const body = { sessionScope: 'thread', approvalMode: mode };
+  if (model) {
+    body.startupConfig = { modelServiceId: model };
+  }
+  if (chatWorkspace) {
+    body.cwd = chatWorkspace;
+  }
+  if (chatToolOverrides) {
+    if (chatToolOverrides.disabled.length) body.toolDisable = chatToolOverrides.disabled;
+    if (chatToolOverrides.enabled.length) body.toolEnable = chatToolOverrides.enabled;
+  }
+  const data = await api('/api/sessions', { method: 'POST', body: body });
+  const sid = data.sessionId || (data.session && data.session.sessionId);
+  if (!sid) throw new Error('daemon 未返回 sessionId');
+  return sid;
+}
+
+function friendlySessionError(msg) {
+  /* daemon 的工作区报错翻译成可操作的指引 */
+  if (/scratch/i.test(msg)) {
+    return msg + ' —— 该目录位于 daemon QWEN_HOME 的祖先链上（如 C:\\Users），' +
+      '不能作为工作区，请选更具体的项目目录';
+  }
+  if (/nests with an existing workspace/i.test(msg)) {
+    return msg + ' —— 与已注册工作区互为祖孙目录，请换一个不相交的目录';
+  }
+  return msg;
+}
+
+async function newSession() {
+  try {
+    const sid = await createRemoteSession();
+    const model = document.getElementById('sel-model').value;
+    chat.sessions.unshift({
+      id: sid,
+      title: '会话 ' + new Date().toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      createdAt: Date.now(),
+      model: model,
+      approvalMode: document.getElementById('sel-approval').value,
+      cwd: chatWorkspace || null,
+      tools: chatToolOverrides
+        ? { disabled: chatToolOverrides.disabled.length, enabled: chatToolOverrides.enabled.length }
+        : null,
+    });
+    saveSessions();
+    liveOf(sid).resumed = true;
+    liveOf(sid).historyLoaded = true; // 新会话没有历史，跳过恢复
+    await selectSession(sid);
+    document.getElementById('chat-input').focus();
+  } catch (e) {
+    toast('新建会话失败：' + friendlySessionError(e.message), 'err');
+  }
+}
+
+document.getElementById('btn-new-session').addEventListener('click', newSession);
+
+/* ---- 消息渲染 ---- */
+
+function appendMessageDom(sid, m) {
+  const box = document.getElementById('messages');
+  const empty = box.querySelector('.empty-tip');
+  if (empty) empty.remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + m.role;
+  wrap.dataset.mid = m.id;
+  if (m.role === 'user') {
+    wrap.innerHTML = '<div class="u-avatar">我</div><div class="u-main"><div class="bubble"></div>' +
+      (m.time ? '<div class="meta"></div>' : '') + '</div>';
+    wrap.querySelector('.bubble').textContent = m.text;
+    if (m.time) wrap.querySelector('.meta').textContent = m.time;
+  } else if (m.role === 'assistant') {
+    const b = document.createElement('div');
+    b.className = 'bubble';
+    wrap.appendChild(b);
+  } else if (m.role === 'banner') {
+    wrap.innerHTML = '<div class="banner ' + esc(m.kind) + '"></div>';
+    if (m.html) {
+      wrap.querySelector('.banner').innerHTML = m.html;
+    } else {
+      wrap.querySelector('.banner').textContent = m.text;
+    }
+  }
+  box.appendChild(wrap);
+  box.scrollTop = box.scrollHeight;
+  return wrap;
+}
+
+function renderMessages() {
+  const sid = chat.activeId;
+  const box = document.getElementById('messages');
+  if (!sid) {
+    box.innerHTML = '<div class="empty-tip">点击左侧「＋ 新建」开始一个新会话</div>';
+    return;
+  }
+  const st = liveOf(sid);
+  box.innerHTML = '';
+  st.messages.forEach(function (m) {
+    appendMessageDom(sid, m);
+    if (m.role === 'assistant') restoreAssistantDom(sid, m);
+  });
+  updateChatUi();
+}
+
+// 重新选中会话时重建 assistant 气泡内的增量内容
+function restoreAssistantDom(sid, m) {
+  const wrap = document.querySelector('.msg[data-mid="' + m.id + '"] .bubble');
+  if (!wrap) return;
+  if (m.text) wrap.appendChild(document.createTextNode(m.text));
+  if (m.thought) {
+    const det = document.createElement('details');
+    det.className = 'thought';
+    det.innerHTML = '<summary>💭 思考过程（点击展开）</summary><div class="thought-body"></div>';
+    det.querySelector('.thought-body').textContent = m.thought;
+    wrap.appendChild(det);
+  }
+  Object.keys(m.tools || {}).forEach(function (tcId) {
+    wrap.appendChild(buildToolDom(m.tools[tcId]));
+  });
+}
+
+function currentAssistant(sid, st) {
+  if (!st.curAssistant) {
+    const m = { id: 'a' + Date.now() + Math.random().toString(36).slice(2, 6), role: 'assistant', text: '', thought: '', tools: {} };
+    st.messages.push(m);
+    st.curAssistant = appendMessageDom(sid, m);
+  }
+  return st.curAssistant.querySelector('.bubble');
+}
+
+function currentThought(sid, st, bubble) {
+  if (!st.curThought) {
+    const det = document.createElement('details');
+    det.className = 'thought';
+    det.open = true;
+    det.innerHTML = '<summary>💭 思考中…</summary><div class="thought-body"></div>';
+    bubble.appendChild(det);
+    st.curThought = det;
+  }
+  return st.curThought.querySelector('.thought-body');
+}
+
+const TOOL_STATUS_TEXT = {
+  running: '运行中', pending: '等待', completed: '完成',
+  ok: '完成', failed: '失败', error: '失败', cancelled: '已取消',
+};
+
+function buildToolDom(tool) {
+  const det = document.createElement('details');
+  det.className = 'tool-call';
+  det.dataset.tcid = tool.toolCallId;
+  const status = tool.status || '';
+  const label = tool.title || tool.toolName || tool.kind || '工具调用';
+  const body = tool.content || tool.rawOutput || tool.rawInput || '';
+  det.innerHTML =
+    '<summary>🔧 ' + esc(label) +
+    '<span class="tstatus ' + esc(status) + '">' + esc(TOOL_STATUS_TEXT[status] || status || '') + '</span>' +
+    (tool.toolCallId ? '<span class="dim" style="margin-left:6px;">#' + esc(tool.toolCallId.slice(0, 8)) + '</span>' : '') +
+    '</summary>' +
+    (body ? '<pre>' + esc(typeof body === 'string' ? body : JSON.stringify(body, null, 2)) + '</pre>' : '');
+  return det;
+}
+
+function upsertToolDom(sid, st, bubble, update) {
+  const tcId = update.toolCallId || ('anon' + Math.random());
+  const msg = st.messages[st.messages.length - 1];
+  let tool = st.tools[tcId];
+  if (!tool) {
+    tool = { toolCallId: tcId };
+    st.tools[tcId] = tool;
+    if (msg && msg.role === 'assistant') {
+      if (!msg.tools) msg.tools = {};
+      msg.tools[tcId] = tool;
+    }
+  }
+  ['title', 'toolName', 'kind', 'status', 'content', 'rawInput', 'rawOutput'].forEach(function (k) {
+    if (update[k] !== undefined) tool[k] = update[k];
+  });
+  const old = bubble.querySelector('details[data-tcid="' + CSS.escape(String(tcId)) + '"]');
+  const dom = buildToolDom(tool);
+  if (update.sessionUpdate === 'tool_call_update' || (old && old.open)) dom.open = true;
+  if (old) old.replaceWith(dom); else bubble.appendChild(dom);
+  return tcId;
+}
+
+/* ---- 历史恢复（刷新后重建消息列表） ----
+   优先拉 daemon 的 transcript（session_transcript 能力，分页 direction=backward），
+   拿不到（旧版 404/无记录）时退化到 UI 服务端的本地缓存 /history。
+   两种来源统一成 envelope 列表（{type, data}），交 rebuildMessages 重建。 */
+
+async function fetchTranscriptAll(sid) {
+  const base = '/api/sessions/' + encodeURIComponent(sid) + '/transcript';
+  let page = await api(base + '?limit=500');
+  let events = Array.isArray(page.events) ? page.events.slice() : [];
+  let cursor = page.nextCursor;
+  let guard = 0;
+  // nextCursor 指向更旧的一页；逐页拼到前面，直到没有更多
+  while (page.hasMore && cursor && guard < 10) {
+    page = await api(base + '?limit=500&direction=backward&cursor=' + encodeURIComponent(cursor));
+    const evs = Array.isArray(page.events) ? page.events : [];
+    events = evs.concat(events);
+    cursor = page.nextCursor;
+    guard++;
+  }
+  return events;
+}
+
+function rebuildMessages(events) {
+  const messages = [];
+  let cur = null;     // 当前 assistant 消息（同一 turn 内的 chunk/tool 归属它）
+  let curUser = null; // 当前 user 消息
+  events.forEach(function (env) {
+    if (!env || typeof env !== 'object') return;
+    const type = env.type;
+    const data = (env.data && typeof env.data === 'object') ? env.data : {};
+    if (type === 'session_update') {
+      const update = (data.update && typeof data.update === 'object') ? data.update : data;
+      const su = update.sessionUpdate;
+      if (su === 'user_message_chunk') {
+        const text = (update.content && update.content.type === 'text') ? update.content.text : '';
+        if (!text) return;
+        if (!curUser) {
+          curUser = { id: 'h-u' + messages.length, role: 'user', text: '' };
+          messages.push(curUser);
+        }
+        curUser.text += text;
+        cur = null;
+      } else if (su === 'agent_message_chunk' || su === 'agent_thought_chunk' ||
+                 su === 'tool_call' || su === 'tool_call_update') {
+        curUser = null;
+        if (!cur) {
+          cur = { id: 'h-a' + messages.length, role: 'assistant', text: '', thought: '', tools: {} };
+          messages.push(cur);
+        }
+        if (su === 'agent_message_chunk') {
+          const text = (update.content && update.content.type === 'text') ? update.content.text : '';
+          if (text) cur.text += text;
+        } else if (su === 'agent_thought_chunk') {
+          const text = (update.content && update.content.type === 'text') ? update.content.text : '';
+          if (text) cur.thought += text;
+        } else {
+          upsertToolData(cur, update);
+        }
+      }
+    } else if (type === 'turn_complete' || type === 'turn_error') {
+      cur = null; curUser = null;
+      if (type === 'turn_error') {
+        messages.push({
+          id: 'h-b' + messages.length, role: 'banner', kind: 'error',
+          text: '本轮失败：' + (data.message || '未知错误'),
+        });
+      }
+    } else if (type === 'permission_request') {
+      // 历史里的审批条无法重放按钮（回调早失效），渲染成塌缩条
+      const tc = data.toolCall || {};
+      const toolLabel = tc.title || tc.toolName || '工具';
+      messages.push({
+        id: 'h-b' + messages.length, role: 'banner', kind: 'perm',
+        html: '<div class="resolved-strip hist"><span class="rs-icon">🕓</span>' +
+          '<span class="rs-text">（历史记录）' + esc(toolLabel) + ' 曾请求权限</span></div>',
+        text: '',
+      });
+    }
+  });
+  return messages;
+}
+
+// upsertToolDom 的纯数据版：重建历史时不碰 DOM
+function upsertToolData(msg, update) {
+  const tcId = update.toolCallId || ('anon' + Math.random());
+  if (!msg.tools) msg.tools = {};
+  let tool = msg.tools[tcId];
+  if (!tool) {
+    tool = { toolCallId: tcId };
+    msg.tools[tcId] = tool;
+  }
+  ['title', 'toolName', 'kind', 'status', 'content', 'rawInput', 'rawOutput'].forEach(function (k) {
+    if (update[k] !== undefined) tool[k] = update[k];
+  });
+}
+
+async function restoreHistory(sid) {
+  const st = liveOf(sid);
+  let events = null;
+  try {
+    events = await fetchTranscriptAll(sid);
+  } catch (e) {
+    events = null; // 404（旧版无 transcript）或 daemon 无此会话记录
+  }
+  if (!events || !events.length) {
+    try {
+      const h = await api('/api/sessions/' + encodeURIComponent(sid) + '/history');
+      if (h && Array.isArray(h.events) && h.events.length) events = h.events;
+    } catch (e) { /* 本地缓存也拿不到就算了 */ }
+  }
+  if (events && events.length) {
+    st.messages = rebuildMessages(events);
+  }
+}
+
+/* ---- SSE 事件处理 ---- */
+
+function handleEvent(sid, env) {
+  const st = liveOf(sid);
+  if (typeof env.id === 'number') st.lastEventId = env.id;
+  const box = document.getElementById('messages');
+  const type = env.type;
+  const data = (env.data && typeof env.data === 'object') ? env.data : {};
+
+  if (type === 'session_update') {
+    // 增量内容在 data.update.sessionUpdate（注意嵌套的 update 层）
+    const update = (data.update && typeof data.update === 'object') ? data.update : data;
+    const su = update.sessionUpdate;
+    const bubble = currentAssistant(sid, st);
+    const msg = st.messages[st.messages.length - 1];
+    if (su === 'agent_message_chunk') {
+      const text = (update.content && update.content.type === 'text') ? update.content.text : '';
+      if (text) {
+        bubble.appendChild(document.createTextNode(text));
+        if (msg) msg.text += text;
+      }
+    } else if (su === 'agent_thought_chunk') {
+      const text = (update.content && update.content.type === 'text') ? update.content.text : '';
+      if (text) {
+        currentThought(sid, st, bubble).appendChild(document.createTextNode(text));
+        if (msg) msg.thought = (msg.thought || '') + text;
+      }
+    } else if (su === 'tool_call' || su === 'tool_call_update') {
+      upsertToolDom(sid, st, bubble, update);
+    }
+    box.scrollTop = box.scrollHeight;
+  } else if (type === 'turn_complete') {
+    finishTurn(sid, null, '本轮结束（stopReason: ' + (data.stopReason || 'unknown') + '）');
+  } else if (type === 'turn_error') {
+    const m = { id: 'b' + Date.now(), role: 'banner', kind: 'error', text: '本轮失败：' + (data.message || '未知错误') };
+    st.messages.push(m);
+    appendMessageDom(sid, m);
+    finishTurn(sid, null, null);
+  } else if (type === 'permission_request') {
+    showPermissionBar(sid, data);
+  } else if (type === 'model_switch_failed') {
+    toast('模型切换失败：' + (data.reason || data.message || '未知原因'), 'warn');
+  } else if (type === 'session_died' || type === 'session_closed' ||
+             type === 'client_evicted' || type === 'stream_error') {
+    const m = { id: 'b' + Date.now(), role: 'banner', kind: 'error', text: '事件流终止：' + type };
+    st.messages.push(m);
+    appendMessageDom(sid, m);
+    finishTurn(sid, null, null);
+    return 'terminal';
+  }
+  return null;
+}
+
+/* ---- intent preview 权限审批卡 ----
+   Eleken intent preview 模式：先展示「AI 想做什么 + 具体内容 + 风险等级」，
+   用户三选一（允许 / 修改后执行 / 拒绝），定局后塌缩成一行 strip，点击可展开。 */
+
+const PERM_KIND_STYLE = {
+  allow_once:    { cls: 'btn-allow btn-sm',          label: '允许执行' },
+  allow_always:  { cls: 'btn-ghost btn-sm',          label: '本会话总是允许' },
+  reject_once:   { cls: 'btn-ghost btn-sm btn-reject', label: '拒绝' },
+  reject_always: { cls: 'btn-ghost btn-sm btn-reject', label: '总是拒绝' },
+};
+
+function permRiskOf(toolCall) {
+  const kind = String((toolCall && toolCall.kind) || '').toLowerCase();
+  if (kind === 'delete' || kind === 'execute') return { cls: 'high', text: '高风险 · 不可逆' };
+  if (kind === 'edit' || kind === 'move' || kind === 'switch_mode') return { cls: 'mid', text: '可逆 · 覆盖风险' };
+  if (kind === 'read' || kind === 'search' || kind === 'fetch' || kind === 'think') return { cls: 'low', text: '只读 · 安全' };
+  return { cls: 'mid', text: '权限请求' };
+}
+
+const PERM_EDITABLE_FIELDS = ['command', 'content', 'new_str', 'new_string', 'text', 'query', 'url', 'path', 'file_path'];
+
+function pickEditableField(rawInput) {
+  if (!rawInput || typeof rawInput !== 'object') return null;
+  for (let i = 0; i < PERM_EDITABLE_FIELDS.length; i++) {
+    const f = PERM_EDITABLE_FIELDS[i];
+    if (typeof rawInput[f] === 'string' && rawInput[f]) return { field: f, value: rawInput[f] };
+  }
+  return null;
+}
+
+function permOutcomeIcon(opt) {
+  const k = String((opt && (opt.kind || opt.optionId)) || '').toLowerCase();
+  if (k.indexOf('reject') >= 0 || k.indexOf('deny') >= 0) return { cls: 'no', icon: '✕', word: '已拒绝' };
+  return { cls: 'ok', icon: '✓', word: '已允许' };
+}
+
+// 定局后把卡片塌缩成一行 strip，详情移入可展开的只读容器
+function collapsePermCard(banner, m, iconCls, icon, text) {
+  const card = banner.querySelector('.perm-card');
+  const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  const strip = document.createElement('div');
+  strip.className = 'resolved-strip';
+  strip.innerHTML = '<span class="rs-icon ' + iconCls + '">' + icon + '</span>' +
+    '<span class="rs-text">' + esc(text) + '</span>' +
+    '<span class="rs-time">' + esc(time) + '</span>' +
+    '<span class="rs-toggle">展开</span>';
+  const detail = document.createElement('div');
+  detail.className = 'resolved-detail';
+  detail.style.display = 'none';
+  if (card) detail.appendChild(card);
+  banner.innerHTML = '';
+  banner.appendChild(strip);
+  banner.appendChild(detail);
+  // 持久化到消息记录：切换会话重渲染后仍保持塌缩态
+  m.html = banner.innerHTML;
+}
+
+// strip 的展开/收起用事件委托，重渲染后依然有效
+document.getElementById('messages').addEventListener('click', function (e) {
+  const strip = e.target.closest ? e.target.closest('.resolved-strip') : null;
+  if (!strip) return;
+  const detail = strip.nextElementSibling;
+  if (!detail || !detail.classList.contains('resolved-detail')) return;
+  const open = detail.style.display !== 'none';
+  detail.style.display = open ? 'none' : '';
+  const tg = strip.querySelector('.rs-toggle');
+  if (tg) tg.textContent = open ? '展开' : '收起';
+  const wrap = strip.closest('.msg');
+  const mid = wrap && wrap.dataset.mid;
+  if (chat.activeId && mid) {
+    const st = liveOf(chat.activeId);
+    const msg = st.messages.find(function (x) { return x.id === mid; });
+    if (msg && wrap.querySelector('.banner')) msg.html = wrap.querySelector('.banner').innerHTML;
+  }
+});
+
+// 「修改后执行」：先取消原调用，等本轮结束后把修改内容作为新指令发出
+async function sendEditInstruction(sid, editedText) {
+  const st = liveOf(sid);
+  const instr = '刚才的工具调用未获批准，请不要重试原调用。改为执行下面修改后的版本：\n```\n' + editedText + '\n```';
+  let waited = 0;
+  while (st.streaming && waited < 20000) {
+    await new Promise(function (r) { setTimeout(r, 300); });
+    waited += 300;
+  }
+  const input = document.getElementById('chat-input');
+  if (st.streaming || chat.activeId !== sid) {
+    input.value = instr;
+    input.focus();
+    toast('修改指令已放入输入框，确认后按 Enter 发送', 'warn');
+    return;
+  }
+  input.value = instr;
+  await sendMessage();
+}
+
+function showPermissionBar(sid, data) {
+  const st = liveOf(sid);
+  const requestId = data.requestId || data.request_id;
+  const options = Array.isArray(data.options) ? data.options : [];
+  const tc = data.toolCall || {};
+  const toolLabel = tc.title || tc.toolName || '工具调用';
+  const risk = permRiskOf(tc);
+  const editable = pickEditableField(tc.rawInput);
+
+  // best-effort 意图说明：取当前 assistant 的思考尾部
+  let rationale = '';
+  for (let i = st.messages.length - 1; i >= 0; i--) {
+    const x = st.messages[i];
+    if (x.role === 'assistant' && x.thought) {
+      const t = x.thought.trim();
+      rationale = t.length > 140 ? '…' + t.slice(-140) : t;
+      break;
+    }
+  }
+
+  const m = { id: 'b' + Date.now(), role: 'banner', kind: 'perm', html: '', text: '' };
+  st.messages.push(m);
+  if (st.pendingPerms && requestId) {
+    st.pendingPerms.add(String(requestId));
+    updateBlockingNote(sid);
+    renderSessionList();
+  }
+  const dom = appendMessageDom(sid, m);
+  const banner = dom.querySelector('.banner');
+
+  const kvRows = [];
+  const ri = tc.rawInput;
+  if (ri && typeof ri === 'object') {
+    Object.keys(ri).forEach(function (k) {
+      const v = ri[k];
+      if (typeof v === 'string') {
+        if (v.length > 120 || v.indexOf('\n') >= 0) {
+          kvRows.push('<div class="row"><span class="k">' + esc(k) + '</span></div><pre>' + esc(v) + '</pre>');
+        } else {
+          kvRows.push('<div class="row"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>');
+        }
+      } else if (v !== null && v !== undefined) {
+        let s = JSON.stringify(v);
+        if (s && s.length > 160) s = s.slice(0, 160) + '…';
+        kvRows.push('<div class="row"><span class="k">' + esc(k) + '</span><span class="v">' + esc(s) + '</span></div>');
+      }
+    });
+  }
+
+  const card = document.createElement('div');
+  card.className = 'perm-card';
+  const reqShort = requestId ? String(requestId).slice(0, 8) : '';
+  card.innerHTML =
+    '<div class="perm-head">' +
+      '<div class="tt">' +
+        '<div class="ttl">计划执行 <b>' + esc(toolLabel) + '</b>，等你确认</div>' +
+        '<div class="sub">权限请求 #' + esc(reqShort) + ' · 批准或拒绝后 agent 继续</div>' +
+      '</div>' +
+      '<div class="grow"></div>' +
+      '<span class="chip ' + risk.cls + '">' + risk.text + '</span>' +
+    '</div>' +
+    '<div class="plan-label">它打算做什么</div>' +
+    '<div class="perm-intent">AI 想要执行：<b>' + esc(toolLabel) + '</b>' +
+      (tc.permissionKind ? ' <span class="dim" style="font-size:11px;">（' + esc(tc.permissionKind) + '）</span>' : '') +
+    '</div>' +
+    (kvRows.length ? '<div class="perm-kv">' + kvRows.join('') + '</div>' : '') +
+    (rationale ? '<div class="perm-rationale"><span class="q">为什么？</span><span>' + esc(rationale) + '</span></div>' : '') +
+    '<div class="perm-actions"></div>' +
+    (editable ?
+      '<div class="perm-edit"><textarea></textarea><div class="row">' +
+      '<button class="btn-allow-edit btn-sm">取消原调用，发送修改版本</button>' +
+      '<button class="btn-ghost btn-sm btn-edit-cancel">返回</button></div>' +
+      '<div class="dim" style="font-size:11px;margin-top:4px;">协议不支持直接改参数：将先拒绝原调用，再把修改后的内容作为新指令发给 AI</div></div>'
+      : '');
+  banner.appendChild(card);
+
+  const actions = card.querySelector('.perm-actions');
+  if (!options.length) {
+    actions.innerHTML = '<span class="dim">（无可用选项）</span>';
+  }
+
+  async function resolvePermission(opt) {
+    card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+    try {
+      await api('/api/sessions/' + encodeURIComponent(sid) + '/permission/' + encodeURIComponent(requestId), {
+        method: 'POST',
+        body: { outcome: { outcome: 'selected', optionId: opt.optionId } },
+      });
+      const oc = permOutcomeIcon(opt);
+      collapsePermCard(banner, m, oc.cls, oc.icon, oc.word + ' · ' + toolLabel);
+      if (st.pendingPerms && requestId) {
+        st.pendingPerms.delete(String(requestId));
+        updateBlockingNote(sid);
+        renderSessionList();
+      }
+      toast('权限已响应');
+    } catch (e) {
+      card.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+      toast('响应权限失败：' + e.message, 'err');
+    }
+  }
+
+  options.forEach(function (opt) {
+    const style = PERM_KIND_STYLE[opt.kind] || { cls: 'btn-ghost btn-sm', label: '' };
+    const btn = document.createElement('button');
+    btn.className = style.cls;
+    btn.textContent = opt.name || style.label || opt.optionId;
+    btn.addEventListener('click', function () { resolvePermission(opt); });
+    actions.appendChild(btn);
+  });
+
+  if (editable) {
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn-ghost btn-sm';
+    editBtn.textContent = '✎ 修改后执行';
+    const editBox = card.querySelector('.perm-edit');
+    const ta = editBox.querySelector('textarea');
+    ta.value = editable.value;
+    editBtn.addEventListener('click', function () { editBox.classList.toggle('open'); });
+    editBox.querySelector('.btn-edit-cancel').addEventListener('click', function () {
+      editBox.classList.remove('open');
+    });
+    editBox.querySelector('.btn-allow-edit').addEventListener('click', async function () {
+      const edited = ta.value;
+      card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+      try {
+        await api('/api/sessions/' + encodeURIComponent(sid) + '/permission/' + encodeURIComponent(requestId), {
+          method: 'POST',
+          body: { outcome: { outcome: 'cancelled' } },
+        });
+        collapsePermCard(banner, m, 'ok', '✎', '已改为修改后执行 · ' + toolLabel);
+        if (st.pendingPerms && requestId) {
+          st.pendingPerms.delete(String(requestId));
+          updateBlockingNote(sid);
+          renderSessionList();
+        }
+        toast('已拒绝原调用，正在发送修改指令…');
+        sendEditInstruction(sid, edited);
+      } catch (e) {
+        card.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+        toast('操作失败：' + e.message, 'err');
+      }
+    });
+    actions.appendChild(editBtn);
+  }
+
+  m.html = banner.innerHTML;
+}
+
+function finishTurn(sid, _unused, note) {
+  const st = liveOf(sid);
+  st.streaming = false;
+  if (st.curThought) {
+    st.curThought.open = false;
+    const sum = st.curThought.querySelector('summary');
+    if (sum) sum.textContent = '💭 思考过程（点击展开）';
+  }
+  st.curAssistant = null;
+  st.curThought = null;
+  st.tools = {};
+  if (note) {
+    document.getElementById('chat-status').textContent = note;
+  }
+  updateChatUi();
+}
+
+function updateChatUi() {
+  const sid = chat.activeId;
+  const streaming = sid && liveOf(sid).streaming;
+  document.getElementById('btn-send').disabled = !!streaming;
+  document.getElementById('btn-stop').style.display = streaming ? '' : 'none';
+  if (!streaming && !document.getElementById('chat-status').textContent) {
+    document.getElementById('chat-status').textContent = '';
+  }
+  updateChatHeader();
+  if (sid) updateBlockingNote(sid);
+}
+
+/* ---- SSE 流读取（fetch + ReadableStream，不用 EventSource） ---- */
+
+async function readEventStream(sid, lastEventId, epoch, attempt) {
+  const st = liveOf(sid);
+  let url = '/api/sessions/' + encodeURIComponent(sid) + '/events';
+  const qs = [];
+  if (lastEventId !== null && lastEventId !== undefined) qs.push('last_event_id=' + encodeURIComponent(lastEventId));
+  if (epoch) qs.push('epoch=' + encodeURIComponent(epoch));
+  if (qs.length) url += '?' + qs.join('&');
+
+  let resp;
+  try {
+    resp = await fetch(url);
+  } catch (e) {
+    return retryOrFail(sid, attempt, '网络错误：' + e.message);
+  }
+  if (!resp.ok) {
+    let msg = resp.status + ' ' + resp.statusText;
+    try {
+      const d = JSON.parse(await resp.text());
+      if (d && d.error) msg = d.error;
+    } catch (e) { /* ignore */ }
+    return retryOrFail(sid, attempt, '事件流请求失败：' + msg);
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buf += decoder.decode(chunk.value, { stream: true });
+      // SSE 按行解析；heartbeat 注释行和无法解析的行直接忽略
+      let idx;
+      while ((idx = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, idx);
+        buf = buf.slice(idx + 1);
+        if (!line.startsWith('data:')) continue;
+        const raw = line.slice(5).trim();
+        if (!raw) continue;
+        let env;
+        try { env = JSON.parse(raw); } catch (e) { continue; }
+        const r = handleEvent(sid, env);
+        if (r === 'terminal') { await reader.cancel().catch(function () {}); return; }
+        if (env.type === 'turn_complete' || env.type === 'turn_error') {
+          // 本轮结束：关闭流（服务端通常也会关）
+          await reader.cancel().catch(function () {});
+          return;
+        }
+      }
+    }
+  } catch (e) {
+    if (st.stopped) return;
+    return retryOrFail(sid, attempt, '读取事件流中断：' + e.message);
+  }
+  // 正常 EOF：如果还在等本轮结束，用最后的事件 id 重连
+  if (st.streaming && !st.stopped) {
+    return retryOrFail(sid, attempt, null);
+  }
+}
+
+function retryOrFail(sid, attempt, reason) {
+  const st = liveOf(sid);
+  if (st.stopped || !st.streaming) return;
+  attempt = attempt || 0;
+  if (reason) document.getElementById('chat-status').textContent = reason + '，重连中…';
+  if (attempt >= 3) {
+    toast('事件流重连 3 次失败，请检查 daemon 状态', 'err');
+    finishTurn(sid, null, '事件流已断开');
+    return;
+  }
+  setTimeout(function () {
+    readEventStream(sid, st.lastEventId, st.epoch, attempt + 1);
+  }, 1000 * (attempt + 1));
+}
+
+/* ---- 发送 / 停止 ---- */
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!chat.activeId) {
+    await newSession();
+    if (!chat.activeId) return;
+  }
+  const sid = chat.activeId;
+  const st = liveOf(sid);
+  if (st.streaming) {
+    toast('上一轮还未结束，请稍候或点「停止」', 'warn');
+    return;
+  }
+  const m = { id: 'u' + Date.now(), role: 'user', text: text, time: fmtTime(Date.now()) };
+  st.messages.push(m);
+  appendMessageDom(sid, m);
+  input.value = '';
+
+  // 用首条用户消息做会话标题
+  const meta = chat.sessions.find(function (s) { return s.id === sid; });
+  if (meta && !meta.renamed && text) {
+    meta.title = text.slice(0, 20);
+    meta.renamed = true;
+    saveSessions();
+    renderSessionList();
+    updateChatHeader();
+  }
+
+  try {
+    const ack = await api('/api/sessions/' + encodeURIComponent(sid) + '/prompt', {
+      method: 'POST',
+      body: { prompt: [{ type: 'text', text: text }] },
+    });
+    st.streaming = true;
+    st.stopped = false;
+    st.lastEventId = (ack && ack.lastEventId !== undefined) ? ack.lastEventId : null;
+    st.epoch = (ack && ack.eventEpoch) ? String(ack.eventEpoch) : null;
+    document.getElementById('chat-status').textContent = '等待模型响应…';
+    updateChatUi();
+    readEventStream(sid, st.lastEventId, st.epoch, 0);
+  } catch (e) {
+    toast('发送失败：' + e.message, 'err');
+    const em = { id: 'b' + Date.now(), role: 'banner', kind: 'error', text: '发送失败：' + e.message };
+    st.messages.push(em);
+    appendMessageDom(sid, em);
+  }
+}
+
+document.getElementById('btn-send').addEventListener('click', sendMessage);
+document.getElementById('chat-input').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+document.getElementById('btn-stop').addEventListener('click', async function () {
+  const sid = chat.activeId;
+  if (!sid) return;
+  const st = liveOf(sid);
+  st.stopped = true;
+  try {
+    await api('/api/sessions/' + encodeURIComponent(sid) + '/cancel', { method: 'POST', body: {} });
+    toast('已请求取消');
+  } catch (e) {
+    toast('取消失败：' + e.message, 'err');
+  }
+  finishTurn(sid, null, '已停止');
+});
+
+/* ---- 顶栏：模型 / 权限模式 ---- */
+
+async function loadModelOptions() {
+  try {
+    const data = await api('/api/models');
+    const models = asList(data, 'models');
+    const sel = document.getElementById('sel-model');
+    sel.innerHTML = '<option value="">默认模型</option>';
+    models.forEach(function (m) {
+      const opt = document.createElement('option');
+      // modelServiceId 用列表里的 key（形如 authType:modelId），防御性兜底
+      const value = m.key || m.modelId || m.id || '';
+      opt.value = value;
+      opt.textContent = (m.name || m.modelId || value) +
+        (m.authType ? '（' + m.authType + '）' : '');
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    toast('加载模型列表失败：' + e.message, 'err');
+  }
+}
+
+document.getElementById('sel-approval').addEventListener('change', async function () {
+  const sid = chat.activeId;
+  const mode = this.value;
+  if (!sid) return;
+  try {
+    await api('/api/sessions/' + encodeURIComponent(sid) + '/approval-mode', {
+      method: 'POST',
+      body: { mode: mode, persist: false },
+    });
+    const meta = chat.sessions.find(function (s) { return s.id === sid; });
+    if (meta) { meta.approvalMode = mode; saveSessions(); }
+    toast('权限模式已切换为 ' + mode);
+  } catch (e) {
+    toast('切换权限模式失败：' + e.message, 'err');
+  }
+});
+
+/* ================= 模型页 ================= */
+
+async function loadModelsPage() {
+  const box = document.getElementById('models-table');
+  box.innerHTML = '<span class="spinner"></span>';
+  try {
+    const data = await api('/api/models');
+    const models = asList(data, 'models');
+    if (!models.length) {
+      box.innerHTML = '<span class="dim">没有已配置的模型</span>';
+      return;
+    }
+    let html = '<table><tr><th>modelId</th><th>名称</th><th>authType</th><th>baseUrl</th><th>用途</th><th>上下文窗口</th></tr>';
+    models.forEach(function (m) {
+      html += '<tr><td>' + esc(m.modelId || m.id || '') + '</td><td>' + esc(m.name || '') + '</td><td>' +
+        esc(m.authType || '') + '</td><td class="dim">' + esc(m.baseUrl || '—') + '</td><td>' +
+        esc(m.purpose || 'chat') + '</td><td>' + esc(m.contextWindowSize || '—') + '</td></tr>';
+    });
+    box.innerHTML = html + '</table>';
+  } catch (e) {
+    box.innerHTML = '<span class="dim">加载失败：' + esc(e.message) + '</span>';
+  }
+}
+
+document.getElementById('btn-models-refresh').addEventListener('click', loadModelsPage);
+document.getElementById('pv-preset').addEventListener('change', function () {
+  const parts = (this.value || '').split('|');
+  if (parts.length === 3) {
+    document.getElementById('pv-providerId').value = parts[1];
+    document.getElementById('pv-baseUrl').value = parts[2];
+  }
+  this.value = '';
+});
+document.getElementById('btn-fetch-models').addEventListener('click', async function () {
+  const baseUrl = document.getElementById('pv-baseUrl').value.trim();
+  const apiKey = document.getElementById('pv-apiKey').value;
+  if (!baseUrl) { toast('先填 baseUrl', 'warn'); return; }
+  const btn = this;
+  btn.disabled = true;
+  try {
+    const data = await api('/api/models/fetch', {
+      method: 'POST', body: { baseUrl: baseUrl, apiKey: apiKey },
+    });
+    const models = data.models || [];
+    if (!models.length) { toast('端点返回了空模型列表', 'warn'); return; }
+    document.getElementById('pv-fetched-via').textContent = data.via || baseUrl;
+    document.getElementById('pv-fetched-count').textContent = models.length;
+    const box = document.getElementById('pv-model-checks');
+    box.innerHTML = models.map(function (m) {
+      return '<label style="display:inline-block;margin:2px 10px 2px 0;white-space:nowrap;">' +
+        '<input type="checkbox" class="pv-model-check" value="' + esc(m) + '" checked> ' +
+        esc(m) + '</label>';
+    }).join('');
+    document.getElementById('pv-fetched').style.display = '';
+    syncFetchedModelIds();
+    toast('拉到 ' + models.length + ' 个模型');
+  } catch (e) {
+    toast('获取失败：' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+});
+function syncFetchedModelIds() {
+  const checked = Array.prototype.map.call(
+    document.querySelectorAll('.pv-model-check:checked'),
+    function (c) { return c.value; }
+  );
+  document.getElementById('pv-modelIds').value = checked.join(', ');
+}
+document.getElementById('pv-model-checks').addEventListener('change', syncFetchedModelIds);
+document.getElementById('pv-check-all').addEventListener('click', function () {
+  document.querySelectorAll('.pv-model-check').forEach(function (c) { c.checked = true; });
+  syncFetchedModelIds();
+});
+document.getElementById('pv-check-none').addEventListener('click', function () {
+  document.querySelectorAll('.pv-model-check').forEach(function (c) { c.checked = false; });
+  syncFetchedModelIds();
+});
+document.getElementById('btn-install-provider').addEventListener('click', async function () {
+  const body = {
+    providerId: document.getElementById('pv-providerId').value.trim(),
+    apiKey: document.getElementById('pv-apiKey').value,
+  };
+  if (!body.providerId || !body.apiKey) { toast('providerId 和 apiKey 必填', 'warn'); return; }
+  const baseUrl = document.getElementById('pv-baseUrl').value.trim();
+  if (baseUrl) body.baseUrl = baseUrl;
+  const protocol = document.getElementById('pv-protocol').value.trim();
+  if (protocol) body.protocol = protocol;
+  const modelIds = document.getElementById('pv-modelIds').value.trim();
+  if (modelIds) body.modelIds = modelIds.split(/[,，\s]+/).filter(Boolean);
+  try {
+    await api('/api/providers', { method: 'POST', body: body });
+    toast('provider 安装成功');
+    loadModelsPage();
+  } catch (e) {
+    toast('安装失败：' + e.message, 'err');
+  }
+});
+document.getElementById('btn-reload-workspace').addEventListener('click', async function () {
+  try {
+    await api('/api/workspace/reload', { method: 'POST', body: {} });
+    toast('配置已重载');
+  } catch (e) {
+    toast('重载失败：' + e.message, 'err');
+  }
+});
+
+/* ================= MCP 页 ================= */
+
+// 旧版 qwen（如 0.21.5）没有 MCP 配置路由：增删改通过服务端编辑
+// settings.json + reload 完成（持久化生效），仍提供启停（excluded 列表）。
+function updateMcpNotice() {
+  const el = document.getElementById('mcp-notice');
+  if (DAEMON_CAPS.mcpPersistentConfig) {
+    el.style.display = 'none';
+  } else {
+    el.style.display = '';
+    el.textContent = '当前 qwen 版本无 MCP 配置路由，增删改通过编辑 settings.json + reload 完成（持久化生效）；' +
+      '若 daemon 用了自定义 QWEN_HOME，请给 UI 服务设置相同的 QWEN_HOME。';
+  }
+}
+
+async function loadMcpPage() {
+  updateMcpNotice();
+  const box = document.getElementById('mcp-table');
+  box.innerHTML = '<span class="spinner"></span>';
+  try {
+    const data = await api('/api/mcp/servers');
+    // 兼容两种响应 shape：
+    // 新版 {v, effective, user, workspace}（name -> config 的 map）
+    // 旧版 GET /workspace/mcp：可能是数组，或 {servers: [...]}，或 name -> 状态对象 的 map
+    let servers = [];
+    if (Array.isArray(data)) {
+      servers = data;
+    } else if (data && Array.isArray(data.servers)) {
+      servers = data.servers;
+    } else if (data && data.effective && typeof data.effective === 'object') {
+      servers = Object.keys(data.effective).map(function (name) {
+        return { name: name, config: data.effective[name] };
+      });
+    } else if (data && data.mcpServers && typeof data.mcpServers === 'object') {
+      servers = Object.keys(data.mcpServers).map(function (name) {
+        return { name: name, config: data.mcpServers[name] };
+      });
+    } else if (data && typeof data === 'object') {
+      // 兜底：把"object 值"的键当作 name -> 配置/状态 的 map
+      servers = Object.keys(data).filter(function (k) {
+        return data[k] && typeof data[k] === 'object' && k !== 'v';
+      }).map(function (k) {
+        const entry = data[k];
+        return entry.name ? entry : { name: k, config: entry };
+      });
+    }
+    servers = servers.filter(function (s) { return s && (s.name || s.server || s.id); });
+    if (!servers.length) {
+      box.innerHTML = '<span class="dim">尚未配置 MCP server</span>';
+      return;
+    }
+    let html = '<table><tr><th>名称</th><th>类型</th><th>配置</th><th>操作</th></tr>';
+    servers.forEach(function (s) {
+      const name = s.name || s.server || s.id;
+      const c = s.config || s;
+      const type = (s.type || (c.command ? 'stdio' : (c.httpUrl ? 'http' : (c.url ? 'sse' : '—'))));
+      const summary = c.command ? (c.command + ' ' + (c.args || []).join(' '))
+        : (c.httpUrl || c.url || (c.status ? '状态：' + c.status : JSON.stringify(c).slice(0, 80)));
+      html += '<tr><td>' + esc(name) + '</td><td>' + esc(type) + '</td>' +
+        '<td class="dim" style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(summary) + '">' + esc(summary) + '</td>' +
+        '<td data-server="' + esc(name) + '">' +
+        '<button class="btn-sm act-enable">启用</button> ' +
+        '<button class="btn-sm btn-ghost act-disable">禁用</button> ' +
+        '<button class="btn-sm btn-danger act-del">删除</button>' +
+        '</td></tr>';
+    });
+    box.innerHTML = html + '</table>';
+    box.querySelectorAll('[data-server]').forEach(function (td) {
+      const name = td.dataset.server;
+      const enableBtn = td.querySelector('.act-enable');
+      const disableBtn = td.querySelector('.act-disable');
+      if (enableBtn) enableBtn.addEventListener('click', function () { mcpAction(name, 'enable'); });
+      if (disableBtn) disableBtn.addEventListener('click', function () { mcpAction(name, 'disable'); });
+      td.querySelector('.act-del').addEventListener('click', async function () {
+        if (!confirm('删除 MCP server「' + name + '」？')) return;
+        try {
+          const r = await api('/api/mcp/servers/' + encodeURIComponent(name) + '?scope=user', { method: 'DELETE' });
+          toast(r && r.via === 'settings' ? '已从 settings.json 删除并重载' : '已删除，点「重载 MCP」生效');
+          loadMcpPage();
+        } catch (e) {
+          toast('删除失败：' + e.message, 'err');
+        }
+      });
+    });
+  } catch (e) {
+    box.innerHTML = '<span class="dim">加载失败：' + esc(e.message) + '</span>';
+  }
+}
+
+async function mcpAction(name, action) {
+  try {
+    const r = await api('/api/mcp/' + encodeURIComponent(name) + '/' + action, { method: 'POST', body: {} });
+    toast((action === 'enable' ? '已启用 ' : '已禁用 ') + name +
+      (r && r.via === 'settings' ? '（settings.json 已更新并重载）' : ''));
+  } catch (e) {
+    toast('操作失败：' + e.message, 'err');
+  }
+}
+
+document.getElementById('btn-mcp-refresh').addEventListener('click', loadMcpPage);
+document.getElementById('mcp-type').addEventListener('change', function () {
+  const t = this.value;
+  document.getElementById('mcp-stdio-fields').style.display = t === 'stdio' ? '' : 'none';
+  document.getElementById('mcp-http-fields').style.display = t === 'http' ? '' : 'none';
+  document.getElementById('mcp-sse-fields').style.display = t === 'sse' ? '' : 'none';
+});
+document.getElementById('mcp-input-mode').addEventListener('change', function () {
+  const jsonMode = this.value === 'json';
+  document.getElementById('mcp-form-mode').style.display = jsonMode ? 'none' : '';
+  document.getElementById('mcp-json-mode').style.display = jsonMode ? '' : 'none';
+  document.querySelectorAll('.mcp-form-only').forEach(function (el) {
+    el.style.display = jsonMode ? 'none' : '';
+  });
+});
+
+function parseJsonField(id, label) {
+  const raw = document.getElementById(id).value.trim();
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch (e) {
+    throw new Error(label + ' 不是合法 JSON');
+  }
+}
+
+async function mcpPut(name, config) {
+  return api('/api/mcp/servers/' + encodeURIComponent(name), {
+    method: 'PUT',
+    body: { scope: 'user', config: config },
+  });
+}
+
+async function mcpSaveFromJson() {
+  /* JSON 模式：{"mcpServers": {...}} 批量导入，或单配置对象（名称用名称框） */
+  const raw = document.getElementById('mcp-json').value.trim();
+  if (!raw) { toast('请粘贴 JSON', 'warn'); return; }
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch (e) {
+    toast('JSON 不合法：' + e.message, 'warn');
+    return;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    toast('JSON 必须是对象', 'warn');
+    return;
+  }
+  let entries; // [[name, config], ...]
+  const batch = parsed.mcpServers;
+  if (batch && typeof batch === 'object' && !Array.isArray(batch)) {
+    entries = Object.keys(batch).map(function (k) { return [k, batch[k]]; });
+  } else {
+    const name = document.getElementById('mcp-name').value.trim();
+    if (!name) {
+      toast('单个配置对象需要在名称框里填名字；批量导入请用 {"mcpServers": {...}}', 'warn');
+      return;
+    }
+    entries = [[name, parsed]];
+  }
+  if (!entries.length) { toast('mcpServers 里没有条目', 'warn'); return; }
+  const failed = [];
+  let viaSettings = false;
+  for (const [name, config] of entries) {
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      failed.push(name + '（配置不是对象）');
+      continue;
+    }
+    try {
+      const r = await mcpPut(name, config);
+      if (r && r.via === 'settings') viaSettings = true;
+    } catch (e) {
+      failed.push(name + '（' + e.message + '）');
+    }
+  }
+  if (failed.length) {
+    toast('部分失败：' + failed.join('；'), 'err');
+  } else {
+    toast('已保存 ' + entries.length + ' 个 server' +
+      (viaSettings ? '（settings.json 已更新并重载）' : '，点「重载 MCP」生效'));
+  }
+  loadMcpPage();
+}
+
+document.getElementById('btn-mcp-save').addEventListener('click', async function () {
+  if (document.getElementById('mcp-input-mode').value === 'json') {
+    await mcpSaveFromJson();
+    return;
+  }
+  const name = document.getElementById('mcp-name').value.trim();
+  if (!name) { toast('请填写名称', 'warn'); return; }
+  const type = document.getElementById('mcp-type').value;
+  let config;
+  try {
+    if (type === 'stdio') {
+      const command = document.getElementById('mcp-command').value.trim();
+      if (!command) { toast('请填写 command', 'warn'); return; }
+      config = {
+        command: command,
+        args: document.getElementById('mcp-args').value.split(/\s+/).filter(Boolean),
+        env: parseJsonField('mcp-env', 'env'),
+      };
+    } else if (type === 'http') {
+      const httpUrl = document.getElementById('mcp-httpUrl').value.trim();
+      if (!httpUrl) { toast('请填写 httpUrl', 'warn'); return; }
+      config = { httpUrl: httpUrl, headers: parseJsonField('mcp-headers', 'headers') };
+    } else {
+      const url = document.getElementById('mcp-url').value.trim();
+      if (!url) { toast('请填写 url', 'warn'); return; }
+      config = { url: url, headers: parseJsonField('mcp-sse-headers', 'headers') };
+    }
+  } catch (e) {
+    toast(e.message, 'warn');
+    return;
+  }
+  try {
+    const result = await mcpPut(name, config);
+    if (result && result.via === 'settings') {
+      toast('已写入 settings.json 并重载生效');
+    } else {
+      toast('MCP server 已保存，点「重载 MCP」生效');
+    }
+    loadMcpPage();
+  } catch (e) {
+    toast('保存失败：' + e.message, 'err');
+  }
+});
+document.getElementById('btn-mcp-reload').addEventListener('click', async function () {
+  try {
+    await api('/api/mcp/reload', { method: 'POST', body: {} });
+    toast('MCP 已重载');
+  } catch (e) {
+    toast('重载失败：' + e.message, 'err');
+  }
+});
+
+/* ================= Skills 页 ================= */
+
+async function loadSkillsPage() {
+  const box = document.getElementById('skills-table');
+  box.innerHTML = '<span class="spinner"></span>';
+  try {
+    const data = await api('/api/skills');
+    const skills = asList(data, 'skills');
+    if (!skills.length) {
+      box.innerHTML = '<span class="dim">没有已安装的 skill</span>';
+      return;
+    }
+    let html = '<table><tr><th>名称</th><th>描述</th><th>级别</th><th>状态</th><th>操作</th></tr>';
+    skills.forEach(function (s) {
+      // 新版条目带 status（'ok'/'disabled'）；旧版（0.21.5）可能是 enabled/disabled 布尔
+      let enabled;
+      if (typeof s.status === 'string') enabled = s.status === 'ok';
+      else if (typeof s.enabled === 'boolean') enabled = s.enabled;
+      else enabled = s.disabled !== true;
+      html += '<tr><td>' + esc(s.name) + '</td><td class="dim" style="max-width:340px;">' + esc(s.description || '—') + '</td>' +
+        '<td>' + esc(s.level || '') + '</td>' +
+        '<td>' + (enabled ? '<span style="color:var(--ok);">已启用</span>' : '<span style="color:var(--text-dim);">已禁用</span>') + '</td>' +
+        '<td data-skill="' + esc(s.name) + '">' +
+        '<button class="btn-sm act-toggle">' + (enabled ? '禁用' : '启用') + '</button> ' +
+        '<button class="btn-sm btn-danger act-del">删除</button>' +
+        '</td></tr>';
+    });
+    box.innerHTML = html + '</table>';
+    box.querySelectorAll('[data-skill]').forEach(function (td) {
+      const name = td.dataset.skill;
+      td.querySelector('.act-toggle').addEventListener('click', async function () {
+        const enable = this.textContent === '启用';
+        try {
+          await api('/api/skills/' + encodeURIComponent(name) + '/enable', {
+            method: 'POST',
+            body: { enabled: enable },
+          });
+          toast((enable ? '已启用 ' : '已禁用 ') + name);
+          loadSkillsPage();
+        } catch (e) {
+          toast('操作失败：' + e.message, 'err');
+        }
+      });
+      td.querySelector('.act-del').addEventListener('click', async function () {
+        const scope = 'global';
+        if (!confirm('删除 skill「' + name + '」（scope=' + scope + '）？')) return;
+        try {
+          await api('/api/skills/' + encodeURIComponent(name) + '?scope=' + scope, { method: 'DELETE' });
+          toast('已删除 ' + name);
+          loadSkillsPage();
+        } catch (e) {
+          toast('删除失败：' + e.message, 'err');
+        }
+      });
+    });
+  } catch (e) {
+    box.innerHTML = '<span class="dim">加载失败：' + esc(e.message) + '</span>';
+  }
+}
+
+document.getElementById('btn-skills-refresh').addEventListener('click', loadSkillsPage);
+document.getElementById('btn-skills-install').addEventListener('click', async function () {
+  const name = document.getElementById('sk-name').value.trim();
+  const path = document.getElementById('sk-path').value.trim();
+  const scope = document.getElementById('sk-scope').value;
+  if (!name || !path) { toast('名称和文件夹路径必填', 'warn'); return; }
+  try {
+    await api('/api/skills/install', {
+      method: 'POST',
+      body: { name: name, scope: scope, source: { type: 'folder', path: path } },
+    });
+    toast('skill 安装成功');
+    loadSkillsPage();
+  } catch (e) {
+    toast('安装失败：' + e.message, 'err');
+  }
+});
+
+/* ================= 工具与状态页 ================= */
+
+const BUILTIN_TOOLS = [
+  'run_shell_command', 'write_file', 'edit', 'read_file', 'glob', 'grep_search',
+  'list_directory', 'web_fetch', 'web_search', 'skill', 'save_memory', 'agent',
+  'cron_create', 'workflow',
+];
+
+// 优先渲染 daemon 的真实工具列表（GET /api/tools）；拿不到（404/更老版本）
+// 时回退到硬编码的常用内置工具名单。
+async function loadToolsList() {
+  const box = document.getElementById('tools-list');
+  let tools = null;
+  try {
+    const data = await api('/api/tools');
+    const list = asList(data, 'tools')
+      .map(function (t) {
+        if (typeof t === 'string') return t;
+        return (t && (t.name || (t.tool && t.tool.name))) || '';
+      })
+      .filter(Boolean);
+    if (list.length) tools = list;
+  } catch (e) { /* 拿不到就回退硬编码 */ }
+  if (!tools) tools = BUILTIN_TOOLS;
+  let html = '<table><tr><th>工具</th><th>操作</th></tr>';
+  tools.forEach(function (name) {
+    html += '<tr><td><code>' + esc(name) + '</code></td><td data-tool="' + esc(name) + '">' +
+      '<button class="btn-sm act-on">启用</button> <button class="btn-sm btn-ghost act-off">禁用</button></td></tr>';
+  });
+  box.innerHTML = html + '</table>';
+  box.querySelectorAll('[data-tool]').forEach(function (td) {
+    const name = td.dataset.tool;
+    td.querySelector('.act-on').addEventListener('click', function () { setTool(name, true); });
+    td.querySelector('.act-off').addEventListener('click', function () { setTool(name, false); });
+  });
+}
+
+async function setTool(name, enabled) {
+  try {
+    await api('/api/tools/' + encodeURIComponent(name) + '/enable', {
+      method: 'POST',
+      body: { enabled: enabled },
+    });
+    toast('工具 ' + name + ' 已' + (enabled ? '启用' : '禁用') + '（对新会话生效）');
+  } catch (e) {
+    toast('操作失败：' + e.message, 'err');
+  }
+}
+
+function kvCard(k, v) {
+  return '<div class="kv-item"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>';
+}
+
+async function loadStatusPage() {
+  await loadToolsList();
+  const hbox = document.getElementById('health-cards');
+  hbox.innerHTML = '<span class="spinner"></span>';
+  try {
+    const h = await api('/api/health');
+    let html = '<div class="kv-grid">';
+    html += kvCard('状态', h.status || 'unknown');
+    html += kvCard('工作区数量', h.workspaceCount !== undefined ? h.workspaceCount : '—');
+    html += kvCard('会话数', h.sessions !== undefined ? h.sessions : '—');
+    html += kvCard('活跃任务', h.activeWork !== undefined ? (h.activeWork ? '是' : '否') : '—');
+    html += kvCard('待审批权限', h.pendingPermissions !== undefined ? h.pendingPermissions : '—');
+    html += kvCard('活跃 prompt', h.activePrompts !== undefined ? h.activePrompts : '—');
+    html += kvCard('SSE 客户端', h.connectedClients !== undefined ? h.connectedClients : '—');
+    html += kvCard('channel 存活', h.channelAlive !== undefined ? (h.channelAlive ? '是' : '否') : '—');
+    html += kvCard('最后活动', h.lastActivityAt || '—');
+    html += '</div>';
+    hbox.innerHTML = html;
+  } catch (e) {
+    hbox.innerHTML = '<span class="dim">加载失败：' + esc(e.message) + '</span>';
+  }
+  const cbox = document.getElementById('cap-cards');
+  try {
+    const c = await api('/api/capabilities');
+    const features = Array.isArray(c.features) ? c.features : [];
+    let html = '<div class="kv-grid">';
+    html += kvCard('protocolVersions', Array.isArray(c.protocolVersions) ? c.protocolVersions.join(', ') : '—');
+    html += kvCard('features 数量', features.length);
+    html += kvCard('mode', c.mode || '—');
+    html += kvCard('默认工作区', c.workspaceCwd || '—');
+    html += '</div>';
+    if (features.length) {
+      html += '<div class="hint">' + features.map(esc).join('、') + '</div>';
+    }
+    cbox.innerHTML = html;
+  } catch (e) {
+    cbox.innerHTML = '<span class="dim">加载失败：' + esc(e.message) + '</span>';
+  }
+}
+
+document.getElementById('btn-status-refresh').addEventListener('click', loadStatusPage);
+
+/* ================= 应用接入页 ================= */
+
+function splitCsv(id) {
+  return document.getElementById(id).value.split(',')
+    .map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+function showAppTokenBanner(name, token, gatewayBase) {
+  const old = document.getElementById('app-token-banner');
+  if (old) old.remove();
+  const div = document.createElement('div');
+  div.id = 'app-token-banner';
+  div.className = 'banner warn';
+  div.style.marginBottom = '10px';
+  div.innerHTML = '程序 <b>' + esc(name) + '</b> 的 token（只显示这一次，请立即保存）：<br>' +
+    '<code style="user-select:all;">' + esc(token) + '</code><br>' +
+    '<span class="hint">接入方式：base_url = <code>' + esc(location.origin + gatewayBase) +
+    '</code>，token = 上面这串。Python 客户端：' +
+    '<code>QwenServeClient("' + esc(location.origin + gatewayBase) + '", token)</code></span>';
+  const table = document.getElementById('apps-table');
+  table.parentNode.insertBefore(div, table);
+}
+
+function resetAppForm() {
+  document.getElementById('app-editing').value = '';
+  document.getElementById('apps-form-title').textContent = '新建接入程序';
+  document.getElementById('app-name').disabled = false;
+  ['app-name', 'app-model', 'app-tools', 'app-paths', 'app-note',
+   'app-cwd', 'app-max-sessions', 'app-rpm'].forEach(function (id) {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('app-approval').value = 'auto';
+  document.getElementById('app-daemon').value = '';
+  document.getElementById('btn-app-cancel').style.display = 'none';
+}
+
+async function loadDaemonOptions() {
+  /* 刷新 app 表单的 daemon 下拉框 */
+  const sel = document.getElementById('app-daemon');
+  const cur = sel.value;
+  try {
+    const data = await api('/api/daemons');
+    let html = '<option value="">默认 daemon</option>';
+    ((data && data.daemons) || []).forEach(function (d) {
+      if (!d.name) return;
+      html += '<option value="' + esc(d.name) + '"' + (d.enabled ? '' : ' disabled') +
+        '>' + esc(d.name) + '（' + esc(d.url) + '）</option>';
+    });
+    sel.innerHTML = html;
+    sel.value = cur;
+  } catch (e) { /* 保持现有选项 */ }
+}
+
+async function loadAppsPage() {
+  const box = document.getElementById('apps-table');
+  try {
+    const data = await api('/api/apps');
+    const apps = (data && data.apps) || [];
+    if (!apps.length) {
+      box.innerHTML = '<span class="dim">还没有接入程序，在下方新建。</span>';
+      return;
+    }
+    let html = '<table><tr><th>名称</th><th>开关</th><th>daemon</th><th>模型</th>' +
+      '<th>审批模式</th><th>工具白名单</th><th>路径白名单</th><th>配额</th>' +
+      '<th>活跃会话</th><th>token</th><th>操作</th></tr>';
+    apps.forEach(function (a) {
+      const quota = (a.maxSessions ? a.maxSessions + ' 会话' : '会话不限') +
+        '<br>' + (a.rateLimitRpm ? a.rateLimitRpm + ' 次/分' : '速率不限');
+      html += '<tr>' +
+        '<td><b>' + esc(a.name) + '</b>' + (a.note ? '<br><span class="dim">' + esc(a.note) + '</span>' : '') +
+          (a.cwd ? '<br><span class="dim" title="' + esc(a.cwd) + '">📁 ' + esc(a.cwd) + '</span>' : '') + '</td>' +
+        '<td><button class="btn-sm ' + (a.enabled ? '' : 'btn-danger') + '" data-act="toggle" data-name="' + esc(a.name) + '" data-enabled="' + a.enabled + '">' +
+          (a.enabled ? '运行中' : '已停用') + '</button></td>' +
+        '<td>' + esc(a.daemon || '默认') + '</td>' +
+        '<td>' + esc(a.model || '默认') + '</td>' +
+        '<td>' + esc(a.approvalMode) + (a.effectiveApprovalMode !== a.approvalMode ? '→' + esc(a.effectiveApprovalMode) : '') + '</td>' +
+        '<td>' + esc((a.allowedTools || []).join(', ') || '不限') + '</td>' +
+        '<td>' + esc((a.allowedPaths || []).join(', ') || '不限') + '</td>' +
+        '<td>' + quota + '</td>' +
+        '<td>' + ((a.sessions || []).length) + '</td>' +
+        '<td><code>' + esc(a.token) + '</code></td>' +
+        '<td>' +
+          '<button class="btn-sm btn-ghost" data-act="edit" data-name="' + esc(a.name) + '">编辑</button> ' +
+          '<button class="btn-sm btn-ghost" data-act="token" data-name="' + esc(a.name) + '">重置token</button> ' +
+          '<button class="btn-sm btn-danger" data-act="del" data-name="' + esc(a.name) + '">删除</button>' +
+        '</td></tr>';
+    });
+    html += '</table>';
+    box.innerHTML = html;
+    box.querySelectorAll('button[data-act]').forEach(function (btn) {
+      btn.addEventListener('click', function () { onAppAction(btn.dataset.act, btn.dataset.name, btn); });
+    });
+  } catch (e) {
+    box.innerHTML = '<span class="dim">加载失败：' + esc(e.message) + '</span>';
+  }
+}
+
+async function onAppAction(act, name, btn) {
+  try {
+    if (act === 'toggle') {
+      const enable = btn.dataset.enabled !== 'true';
+      await api('/api/apps/' + encodeURIComponent(name) + '/enable?enabled=' + enable, { method: 'POST', body: {} });
+      toast(enable ? '已启用（新会话放行）' : '已停用（存量会话已关闭）');
+    } else if (act === 'edit') {
+      const data = await api('/api/apps');
+      const a = (data.apps || []).find(function (x) { return x.name === name; });
+      if (!a) return;
+      document.getElementById('app-editing').value = a.name;
+      document.getElementById('apps-form-title').textContent = '编辑：' + a.name;
+      document.getElementById('app-name').value = a.name;
+      document.getElementById('app-name').disabled = true;
+      document.getElementById('app-model').value = a.model || '';
+      document.getElementById('app-approval').value = a.approvalMode || 'auto';
+      document.getElementById('app-tools').value = (a.allowedTools || []).join(', ');
+      document.getElementById('app-paths').value = (a.allowedPaths || []).join(', ');
+      document.getElementById('app-note').value = a.note || '';
+      document.getElementById('app-cwd').value = a.cwd || '';
+      document.getElementById('app-daemon').value = a.daemon || '';
+      document.getElementById('app-max-sessions').value = a.maxSessions || '';
+      document.getElementById('app-rpm').value = a.rateLimitRpm || '';
+      document.getElementById('btn-app-cancel').style.display = '';
+    } else if (act === 'token') {
+      if (!window.confirm('重置 ' + name + ' 的 token？旧 token 立即失效。')) return;
+      const a = await api('/api/apps/' + encodeURIComponent(name) + '/token', { method: 'POST', body: {} });
+      showAppTokenBanner(name, a.token, '/app/v1');
+    } else if (act === 'del') {
+      if (!window.confirm('删除 ' + name + '？其全部会话将被关闭。')) return;
+      await api('/api/apps/' + encodeURIComponent(name), { method: 'DELETE' });
+      toast('已删除');
+    }
+    loadAppsPage();
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+}
+
+document.getElementById('btn-app-save').addEventListener('click', async function () {
+  const editing = document.getElementById('app-editing').value;
+  const body = {
+    model: document.getElementById('app-model').value.trim() || null,
+    approvalMode: document.getElementById('app-approval').value,
+    allowedTools: splitCsv('app-tools'),
+    allowedPaths: splitCsv('app-paths'),
+    note: document.getElementById('app-note').value.trim(),
+    cwd: document.getElementById('app-cwd').value.trim() || null,
+    daemon: document.getElementById('app-daemon').value,
+    maxSessions: parseInt(document.getElementById('app-max-sessions').value, 10) || 0,
+    rateLimitRpm: parseInt(document.getElementById('app-rpm').value, 10) || 0,
+  };
+  try {
+    if (editing) {
+      await api('/api/apps/' + encodeURIComponent(editing), { method: 'PUT', body: body });
+      toast('已保存');
+    } else {
+      const name = document.getElementById('app-name').value.trim();
+      if (!name) { toast('名称必填', 'err'); return; }
+      const a = await api('/api/apps', { method: 'POST', body: { ...body, name: name } });
+      showAppTokenBanner(name, a.token, '/app/v1');
+      toast('已创建，token 见上方横幅');
+    }
+    resetAppForm();
+    loadAppsPage();
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+});
+document.getElementById('btn-app-cancel').addEventListener('click', resetAppForm);
+document.getElementById('btn-apps-refresh').addEventListener('click', function () {
+  loadAppsPage();
+  loadDaemonOptions();
+});
+
+/* ---------- daemon 注册表 ---------- */
+
+async function loadDaemonsPage() {
+  const box = document.getElementById('daemons-table');
+  try {
+    const data = await api('/api/daemons');
+    const daemons = (data && data.daemons) || [];
+    let html = '<table><tr><th>名称</th><th>地址</th><th>状态</th><th>token</th>' +
+      '<th>备注</th><th>操作</th></tr>';
+    daemons.forEach(function (d) {
+      const label = d.name || '默认';
+      html += '<tr>' +
+        '<td><b>' + esc(label) + '</b></td>' +
+        '<td><code>' + esc(d.url) + '</code></td>' +
+        '<td>' + (d.enabled ? '启用' : '已停用') + '</td>' +
+        '<td><code>' + esc(d.token || '—') + '</code></td>' +
+        '<td>' + esc(d.note || '') + '</td>' +
+        '<td>' + (d.builtin ? '<span class="dim">内置</span>' :
+          '<button class="btn-sm btn-ghost" data-dact="probe" data-name="' + esc(d.name) + '">探测</button> ' +
+          '<button class="btn-sm btn-ghost" data-dact="toggle" data-name="' + esc(d.name) + '" data-enabled="' + d.enabled + '">' +
+            (d.enabled ? '停用' : '启用') + '</button> ' +
+          '<button class="btn-sm btn-danger" data-dact="del" data-name="' + esc(d.name) + '">删除</button>') +
+        '</td></tr>';
+    });
+    html += '</table>';
+    box.innerHTML = html;
+    box.querySelectorAll('button[data-dact]').forEach(function (btn) {
+      btn.addEventListener('click', function () { onDaemonAction(btn.dataset.dact, btn.dataset.name, btn); });
+    });
+  } catch (e) {
+    box.innerHTML = '<span class="dim">加载失败：' + esc(e.message) + '</span>';
+  }
+}
+
+async function onDaemonAction(act, name, btn) {
+  try {
+    if (act === 'probe') {
+      const r = await api('/api/daemons/' + encodeURIComponent(name) + '/probe', { method: 'POST', body: {} });
+      toast(r.ok ? 'daemon 可达（HTTP ' + r.statusCode + '）' : '不可达：' + (r.error || r.statusCode),
+        r.ok ? 'ok' : 'err');
+      return;
+    }
+    if (act === 'toggle') {
+      const enable = btn.dataset.enabled !== 'true';
+      await api('/api/daemons/' + encodeURIComponent(name) + '/enable?enabled=' + enable, { method: 'POST', body: {} });
+      toast(enable ? '已启用' : '已停用（引用它的 app 将无法建会话）');
+    } else if (act === 'del') {
+      if (!window.confirm('删除 daemon ' + name + '？')) return;
+      await api('/api/daemons/' + encodeURIComponent(name), { method: 'DELETE' });
+      toast('已删除');
+    }
+    loadDaemonsPage();
+    loadDaemonOptions();
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+}
+
+document.getElementById('btn-daemon-add').addEventListener('click', async function () {
+  const name = document.getElementById('daemon-name').value.trim();
+  const url = document.getElementById('daemon-url').value.trim();
+  if (!name || !url) { toast('名称和地址必填', 'err'); return; }
+  try {
+    const d = await api('/api/daemons', {
+      method: 'POST',
+      body: {
+        name: name, url: url,
+        token: document.getElementById('daemon-token').value.trim() || null,
+        note: document.getElementById('daemon-note').value.trim(),
+      },
+    });
+    if (d.token) {
+      toast('已添加；daemon token（只显示一次）：' + d.token);
+    } else {
+      toast('已添加');
+    }
+    ['daemon-name', 'daemon-url', 'daemon-token', 'daemon-note'].forEach(function (id) {
+      document.getElementById(id).value = '';
+    });
+    loadDaemonsPage();
+    loadDaemonOptions();
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+});
+document.getElementById('btn-daemons-refresh').addEventListener('click', function () {
+  loadDaemonsPage();
+  loadDaemonOptions();
+});
+
+/* ---------- 审计日志 ---------- */
+
+async function loadAudit() {
+  const box = document.getElementById('audit-list');
+  try {
+    const data = await api('/api/audit?limit=50');
+    const records = (data && data.records) || [];
+    if (!records.length) {
+      box.innerHTML = '<span class="dim">暂无审计记录。</span>';
+      return;
+    }
+    let html = '<table><tr><th>时间</th><th>事件</th><th>详情</th></tr>';
+    records.forEach(function (r) {
+      const detail = Object.keys(r).filter(function (k) {
+        return k !== 'ts' && k !== 'event';
+      }).map(function (k) {
+        return esc(k) + '=' + esc(typeof r[k] === 'object' ? JSON.stringify(r[k]) : String(r[k]));
+      }).join(' ');
+      html += '<tr><td class="dim">' + esc(r.ts || '') + '</td>' +
+        '<td><b>' + esc(r.event || '') + '</b></td>' +
+        '<td><code style="word-break:break-all;">' + detail + '</code></td></tr>';
+    });
+    html += '</table>';
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<span class="dim">加载失败：' + esc(e.message) + '</span>';
+  }
+}
+document.getElementById('btn-audit-refresh').addEventListener('click', loadAudit);
+
+async function loadAppModelOptions() {
+  /* app 表单的模型下拉：来自 daemon 已配置模型（/api/models） */
+  try {
+    const data = await api('/api/models');
+    const models = asList(data, 'models');
+    document.getElementById('app-model-options').innerHTML = models.map(function (m) {
+      const id = m.modelId || m.id || '';
+      return id ? '<option value="' + esc(id) + '">' + esc(m.name || id) + '</option>' : '';
+    }).join('');
+  } catch (e) { /* daemon 未就绪时保持空下拉，仍可手输 */ }
+}
+
+function loadAppsPageAll() {
+  loadAppsPage();
+  loadDaemonOptions();
+  loadAppModelOptions();
+  loadDaemonsPage();
+  loadAudit();
+}
+
+/* ================= 初始化 ================= */
+
+loadSessions();
+renderSessionList();
+loadModelOptions();
+</script>
+</body>
+</html>

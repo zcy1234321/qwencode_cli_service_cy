@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qwen-serve-client"
+version = "0.2.0"
+description = "Thin Python client for the qwen serve HTTP daemon (REST + SSE)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27",
+    "httpx-sse>=0.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+ui = ["fastapi>=0.110", "uvicorn>=0.29"]
+
+[project.scripts]
+qwen-serve-ui = "qwen_serve_ui.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+qwen_serve_ui = ["static/*"]

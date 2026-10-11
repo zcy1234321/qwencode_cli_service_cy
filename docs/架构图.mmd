@@ -1,0 +1,38 @@
+flowchart TB
+    subgraph U["使用方"]
+        B["浏览器（人）<br/>Web 管理界面"]
+        A["外部程序 × N<br/>API 接入"]
+    end
+
+    subgraph GW["UI 网关（Python FastAPI）· 端口 8080"]
+        UI["单页管理界面<br/>聊天 / 模型 / MCP / Skills / 工具与状态"]
+        AGW["应用接入网关 /app/v1（OpenAI 兼容）<br/>每个 app 独立 token<br/>工具 / 文件路径白名单 · 权限审批模式<br/>并发 / 速率配额 · 多 daemon 路由"]
+        SEC["审计日志 ui-audit.jsonl<br/>权限投票决策 · 会话记忆缓存"]
+    end
+
+    subgraph DA["qwen serve 推理后端（qwen-code CLI，可多实例）"]
+        D1["daemon 127.0.0.1:4170<br/>每会话一个 qwen 子进程"]
+        D2["daemon 2 … daemon N<br/>按会话路由"]
+    end
+
+    subgraph MP["模型 Provider（OpenAI 兼容，可多家）"]
+        M["例：Kimi k3 / kimi-for-coding"]
+    end
+
+    B -->|"HTTP 8080"| UI
+    A -->|"base_url 指向网关<br/>+ app token"| AGW
+    UI --> AGW
+    AGW -->|"HTTP + SSE 事件流"| D1
+    AGW --> D2
+    D1 -->|"HTTPS"| M
+    D2 --> M
+    SEC -.-> AGW
+
+    classDef user fill:#1f6feb,stroke:#0d419d,color:#fff
+    classDef gw fill:#8250df,stroke:#5a32a3,color:#fff
+    classDef daemon fill:#cf222e,stroke:#a40e26,color:#fff
+    classDef model fill:#1a7f37,stroke:#116329,color:#fff
+    class B,A user
+    class UI,AGW,SEC gw
+    class D1,D2 daemon
+    class M model
