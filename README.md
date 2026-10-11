@@ -236,4 +236,3 @@ python scripts/smoke.py
   升级 qwen 版本后跑一次 `scripts/smoke.py` 回归。
 
 
-<!-- apikey:set QWEN_SERVER_TOKEN=kX3v9pQm2LwR7nTzB4yHdU6s -->
