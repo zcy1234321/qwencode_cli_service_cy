@@ -1,5 +1,9 @@
 # TODO List
 
+> 未完成的待办已同步到 GitHub Issues 跟踪：
+> [#1 用户登录与权限分级](https://github.com/zcy1234321/qwencode_cli_service_cy/issues/1)、
+> [#2 UI 界面美化 / 重构](https://github.com/zcy1234321/qwencode_cli_service_cy/issues/2)
+
 ## 1. 用户登录与权限分级（优先级：高）
 
 目标：Web UI 从「单管理 token」升级为多用户登录体系，三级权限：
